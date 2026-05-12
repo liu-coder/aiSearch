@@ -151,22 +151,19 @@ enable=false
 # ============================================================
 
 [config]
-# 使用的模型 - 按需切换
-# 通义千问（国内推荐，需配合 OPENAI_API_BASE 环境变量）
-model = "DeepSeek-V4-Flash"
-# OpenAI GPT-4o-mini（便宜且够用）
-# model = "gpt-4o-mini"
-# DeepSeek（性价比高）
-# model = "deepseek-chat"
+# 通过 OpenAI 兼容协议接入 DeepSeek
+# 需配合环境变量：OPENAI_API_KEY、OPENAI_API_BASE=https://api.deepseek.com/v1
+# DeepSeek 官方仅提供两个模型：deepseek-chat (V3)、deepseek-reasoner (R1)
+model = "deepseek-chat"
+fallback_models = ["deepseek-chat"]
 
-# 语言设置：让 AI 用中文给 Review 评论
+# 非 OpenAI 模型必须显式声明上下文长度，否则 LiteLLM 估算会出错
+# deepseek-chat 上下文为 64K
+custom_model_max_tokens = 65536
+
+# 让 AI 用中文给 Review 评论
 response_language = "zh-CN"
 
-# Temperature for the model (0.0 - 1.0)
-temperature=0.2
-
-# Max tokens for the model
-max_tokens=4000
-
-# Verbosity level (info, debug)
-verbosity_level="info"
+temperature = 0.2
+max_tokens = 4000
+verbosity_level = "info"

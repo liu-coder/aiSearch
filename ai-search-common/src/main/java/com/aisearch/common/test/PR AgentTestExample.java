@@ -6,7 +6,7 @@ package com.aisearch.common.test;
  * @author Test
  * @since 2026-05-12
  */
-public class PR AgentTestExample {
+class PRAgentTestExample {
     
     private String name;
     private Integer age;
@@ -14,7 +14,7 @@ public class PR AgentTestExample {
     /**
      * 构造函数
      */
-    public PR AgentTestExample(String name, Integer age) {
+    PRAgentTestExample(String name, Integer age) {
         this.name = name;
         this.age = age;
     }

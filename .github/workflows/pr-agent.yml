@@ -28,10 +28,10 @@ jobs:
         id: pragent
         uses: Codium-ai/pr-agent@main
         env:
-          # API Key 配置（三选一）
-          # 1. 通义千问：设置 OPENAI_KEY + OPENAI_API_BASE
-          # 2. DeepSeek：设置 OPENAI_KEY + OPENAI_API_BASE
-          # 3. OpenAI：只设置 OPENAI_KEY
+          # 通过 OpenAI 兼容协议接入 DeepSeek
+          # LiteLLM 读取的是 OPENAI_API_KEY，把仓库 secret OPENAI_KEY 映射过来即可
+          # 同时给 PR-Agent 自身保留 OPENAI_KEY，二者都指向同一个 secret
+          OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
           OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
