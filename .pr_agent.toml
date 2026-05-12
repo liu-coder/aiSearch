@@ -1,33 +1,82 @@
 # ============================================================
-[pr_reviewer]
+# PR-Agent 配置文件 - Spring Cloud Alibaba 项目
+# 文件名：.pr_agent.toml
+# 放置位置：项目根目录
 # ============================================================
 
-# Review 时重点检查的内容（按团队优先级排序）
-enable=true                                # 启用代码审查
-enable_ask_questions=true                  # 允许向 AI 提问
-require_tests_review=true                  # 检查是否有单元测试
-require_security_review=true               # 安全问题检查
-require_focused_review=false               # 是否聚焦于单一功能（宽松）
+# ============================================================
+[config]
+# ============================================================
+# 通过 LiteLLM 原生 DeepSeek provider 接入。
+# API Key 通过 GitHub Actions 环境变量 DEEPSEEK_API_KEY 注入。
+model = "deepseek/deepseek-chat"
+# fallback 使用不同模型才有意义；deepseek-reasoner 推理能力更强作为兜底
+fallback_models = ["deepseek/deepseek-reasoner"]
 
-# 单次 review 最多评论数，避免信息轰炸
-max_findings_per_file=5                    # 每个文件最多5个发现
-num_code_suggestions=4                     # 每个PR最多4个建议
+# deepseek-chat 上下文 64K，必须显式声明，否则 LiteLLM 估算出错
+custom_model_max_tokens = 65536
+max_model_tokens = 64000
+ai_timeout = 300
 
-# Enable/disable incremental PR review (only new commits)
-enable_incremental_review=false
+# clip：超长 PR 截断处理，适合大仓库；如需摘要可改为 "summarize"
+large_patch_policy = "clip"
 
-# Maximum number of calls to the model (used for incremental review)
-max_calls_allowed=50
+# 让 AI 用中文输出 Review 评论
+response_language = "zh-CN"
 
-# Enable/disable final update message after all reviews are done
-final_update_message=true
+temperature = 0.2
+max_tokens = 4000
 
-# Enable/disable auto approval for small PRs
-enable_auto_approval=false
+# 生产环境用 INFO，DEBUG 会输出大量日志拖慢 Actions
+verbosity_level = 1
+log_level = "INFO"
+
+
+# ============================================================
+[github_action_config]
+# ============================================================
+# auto_improve 成本较高（多轮调用），仅在 PR 首次开启时运行
+# synchronize（每次 push）不触发 improve，避免重复消耗 API
+auto_review   = true
+auto_describe = true
+auto_improve  = false   # 按需手动评论 /improve 触发，控制成本
+
+# 去掉 synchronize：每次推代码不自动跑全套
+# 增量 review 通过 enable_incremental_review 控制（见下方）
+pr_actions = ["opened", "reopened", "ready_for_review", "review_requested"]
+
+# 注意：[github_app] 块已删除。
+# 你使用的是 GitHub Actions，不是 GitHub App 安装方式。
+# 保留 [github_app] 会导致 push_commands 与 Actions 双重触发。
+
+
+# ============================================================
+[pr_reviewer]
+# ============================================================
+enable                  = true
+enable_ask_questions    = true
+require_tests_review    = true
+require_security_review = true
+require_focused_review  = false
+
+# 每文件最多 5 个发现，每 PR 最多 4 个建议，避免信息轰炸
+max_findings_per_file = 5
+num_code_suggestions  = 4
+
+# 开启增量 review：synchronize 事件只审查新增提交，大幅节省 Token
+enable_incremental_review = true
+
+# 最大调用次数从 50 降到 20，防止单次 PR 费用失控
+max_calls_allowed = 20
+
+# 关闭 review 完成后的总结消息，30 人团队 PR 频繁时减少噪音
+final_update_message = false
+
+# 不开启自动通过，人工最终决策
+enable_auto_approval = false
 
 # -----------------------------------------------------------
 # 针对 Spring Cloud Alibaba 项目的自定义检查规则
-# 写在 extra_instructions，AI 会遵循这些约束进行 review
 # -----------------------------------------------------------
 extra_instructions = """
 你是一个资深的 Java 后端工程师，正在对 Spring Cloud Alibaba 项目做代码 Review。
@@ -84,12 +133,10 @@ extra_instructions = """
 # ============================================================
 [pr_description]
 # ============================================================
-# 自动生成 PR 描述的格式
-enable=true                                  # 启用 PR 描述生成
-enable_publishable_pr=true                   # 生成可发布的 PR 描述
-publish_description_as_comment=false         # 直接更新 PR 描述，不发评论
-add_original_user_description=true           # 保留用户原始描述
-generate_ai_title=false                      # 不生成 AI 标题
+enable                        = true
+publish_description_as_comment = false   # 直接更新 PR 描述，不发评论
+add_original_user_description = true     # 保留用户原始描述
+generate_ai_title             = false    # 不覆盖标题
 
 extra_instructions = """
 请用中文生成 PR 描述，格式如下：
@@ -112,61 +159,34 @@ extra_instructions = """
 # ============================================================
 [pr_code_suggestions]
 # ============================================================
-# 代码建议配置
-enable=true                                  # 启用代码建议
-num_code_suggestions=4                       # 最多4个建议
-enable_self_review=false                     # 禁用自我审查
-focus_only_on_critical=false                 # 不仅关注关键问题
+num_code_suggestions_per_chunk = 3
+max_number_of_calls            = 3
+focus_only_on_problems         = true
+
+# 设为 5 过滤掉低置信度建议，减少噪音；原来 0 会全量输出
+suggestions_score_threshold    = 5
+
+publish_output_no_suggestions  = true
+commitable_code_suggestions    = false
+dual_publishing_score_threshold = -1
+
+# DeepSeek API 并发下容易触发限流，串行更稳定
+parallel_calls = false
 
 
 # ============================================================
 [pr_questions]
 # ============================================================
-# 允许在 PR 中向 AI 提问
-enable=true
+enable = true
+
 
 # ============================================================
 [pr_add_docs]
 # ============================================================
-# 文档建议
-enable=true
+enable = true
+
 
 # ============================================================
 [pr_custom_labels]
 # ============================================================
-# 自定义标签（暂不启用）
-enable=false
-
-# ============================================================
-[github]
-# GitHub 专用配置
-# ============================================================
-# GitHub Token 通过环境变量 GITHUB_TOKEN 自动获取
-
-
-# ============================================================
-# PR-Agent 配置文件 - AI视频检索系统
-# 文件名：.pr_agent.toml
-# 放置位置：项目根目录
-# ============================================================
-
-[config]
-# 使用的模型 - 按需切换
-# 通义千问（国内推荐，需配合 OPENAI_API_BASE 环境变量）
-model = "DeepSeek-V4-Flash"
-# OpenAI GPT-4o-mini（便宜且够用）
-# model = "gpt-4o-mini"
-# DeepSeek（性价比高）
-# model = "deepseek-chat"
-
-# 语言设置：让 AI 用中文给 Review 评论
-response_language = "zh-CN"
-
-# Temperature for the model (0.0 - 1.0)
-temperature=0.2
-
-# Max tokens for the model
-max_tokens=4000
-
-# Verbosity level (info, debug)
-verbosity_level="info"
+enable = false
