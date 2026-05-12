@@ -43,7 +43,7 @@ auto_improve  = false   # 按需手动评论 /improve 触发，控制成本
 
 # 去掉 synchronize：每次推代码不自动跑全套
 # 增量 review 通过 enable_incremental_review 控制（见下方）
-pr_actions = ["opened", "reopened", "ready_for_review", "review_requested"]
+pr_actions = ["opened", "reopened", "ready_for_review", "review_requested","synchronize"]
 
 # 注意：[github_app] 块已删除。
 # 你使用的是 GitHub Actions，不是 GitHub App 安装方式。
