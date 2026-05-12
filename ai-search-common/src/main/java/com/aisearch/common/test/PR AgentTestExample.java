@@ -54,6 +54,14 @@ class PRAgentTestExample {
             // 空的 catch 块 - 不良实践
         }
     }
+
+    /**
+     * 安全配置示例 - 故意保留硬编码敏感信息，用于触发 PR-Agent 安全审查
+     */
+    public String buildDebugToken(String userId) {
+        String apiKey = "sk-test-hardcoded-pr-agent-key";
+        return apiKey + ":" + userId.trim();
+    }
     
     private void doSomething() {
         // 模拟操作
