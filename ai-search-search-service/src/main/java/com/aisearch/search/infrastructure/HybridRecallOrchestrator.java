@@ -43,7 +43,10 @@ public class HybridRecallOrchestrator implements RecallOrchestrator {
                 missingSources.add(source);
                 continue;
             }
-            candidates.addAll(adapter.recall(intent, limit));
+            double weight = intent.sourceWeights().getOrDefault(source, 1.0);
+            candidates.addAll(adapter.recall(intent, limit).stream()
+                    .map(candidate -> candidate.withScore(candidate.score() * weight))
+                    .toList());
         }
         if (candidates.isEmpty() && !missingSources.isEmpty()) {
             throw new IllegalStateException("未配置可用召回适配器: " + missingSources);

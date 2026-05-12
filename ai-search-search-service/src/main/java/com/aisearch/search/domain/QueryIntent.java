@@ -17,9 +17,10 @@ public record QueryIntent(
         String semanticQuery,
         List<String> keywords,
         Map<String, String> filters,
-        List<RecallSource> recallSources
+        List<RecallSource> recallSources,
+        Map<RecallSource, Double> sourceWeights
 ) {
     public SearchPlan toSearchPlan() {
-        return new SearchPlan(intent.name(), semanticQuery, filters, recallSources);
+        return new SearchPlan(intent.name(), semanticQuery, filters, recallSources, sourceWeights);
     }
 }

@@ -33,6 +33,7 @@ public class MilvusVectorIndexWriter implements VectorIndexWriter {
                                 "title", document.title(),
                                 "startTimeMs", document.startTimeMs(),
                                 "endTimeMs", document.endTimeMs(),
+                                "indexVersion", document.indexVersion(),
                                 properties.getMilvus().getVectorField(), document.embedding(),
                                 properties.getMilvus().getImageVectorField(), document.imageEmbedding()))))
                 .retrieve()

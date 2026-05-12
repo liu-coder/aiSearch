@@ -81,6 +81,9 @@ public class WorkerPipelineProperties {
     public static class Model {
         private String endpoint = "http://localhost:18084";
         private int maxConcurrentCalls = 4;
+        private int qpsLimit = 8;
+        private int maxAttempts = 3;
+        private long initialBackoffMs = 200;
         private int cacheMaxEntries = 1000;
 
         public String getEndpoint() {
@@ -97,6 +100,30 @@ public class WorkerPipelineProperties {
 
         public void setMaxConcurrentCalls(int maxConcurrentCalls) {
             this.maxConcurrentCalls = maxConcurrentCalls;
+        }
+
+        public int getQpsLimit() {
+            return qpsLimit;
+        }
+
+        public void setQpsLimit(int qpsLimit) {
+            this.qpsLimit = qpsLimit;
+        }
+
+        public int getMaxAttempts() {
+            return maxAttempts;
+        }
+
+        public void setMaxAttempts(int maxAttempts) {
+            this.maxAttempts = maxAttempts;
+        }
+
+        public long getInitialBackoffMs() {
+            return initialBackoffMs;
+        }
+
+        public void setInitialBackoffMs(long initialBackoffMs) {
+            this.initialBackoffMs = initialBackoffMs;
         }
 
         public int getCacheMaxEntries() {

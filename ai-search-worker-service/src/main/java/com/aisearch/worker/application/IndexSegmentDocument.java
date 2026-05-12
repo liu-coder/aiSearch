@@ -11,6 +11,7 @@ public record IndexSegmentDocument(
         String title,
         long startTimeMs,
         long endTimeMs,
+        String indexVersion,
         String asrText,
         String ocrText,
         String caption,

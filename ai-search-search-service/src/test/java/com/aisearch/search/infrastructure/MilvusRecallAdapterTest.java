@@ -74,6 +74,7 @@ class MilvusRecallAdapterTest {
                 "新能源",
                 List.of("新能源"),
                 Map.of(),
-                List.of(RecallSource.TEXT_VECTOR));
+                List.of(RecallSource.TEXT_VECTOR),
+                Map.of(RecallSource.TEXT_VECTOR, 1.0));
     }
 }

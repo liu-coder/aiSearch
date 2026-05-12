@@ -67,6 +67,7 @@ class ElasticsearchRecallAdapterTest {
                 "新能源 发布会",
                 List.of("新能源", "发布会"),
                 Map.of(),
-                List.of(RecallSource.KEYWORD));
+                List.of(RecallSource.KEYWORD),
+                Map.of(RecallSource.KEYWORD, 1.0));
     }
 }

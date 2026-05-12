@@ -29,7 +29,8 @@ class WorkflowDebugServiceTest {
         assertThat(asr.getStatus()).isEqualTo(StageTaskStatus.PENDING);
         assertThat(ocr.getStatus()).isEqualTo(StageTaskStatus.PENDING);
         verify(artifactRepository).deleteByVideoIdAndArtifactTypeIn("video-1",
-                List.of("ASR_SEGMENTS", "ASR_TEXT", "OCR_TEXT", "CAPTION", "EMBEDDING_TEXT", "READY"));
+                List.of("ASR_SEGMENTS", "ASR_TEXT", "OCR_TEXT", "CAPTION", "EMBEDDING_TEXT",
+                        "INDEX_VERSION", "INDEX_TEXT", "IMAGE_EMBEDDING", "READY"));
     }
 
     @Test
@@ -37,7 +38,9 @@ class WorkflowDebugServiceTest {
         VideoProcessingStageTaskRepository taskRepository = mock(VideoProcessingStageTaskRepository.class);
         VideoProcessingArtifactRepository artifactRepository = mock(VideoProcessingArtifactRepository.class);
         VideoProcessingTaskExecutor executor = mock(VideoProcessingTaskExecutor.class);
-        WorkflowDebugService service = new WorkflowDebugService(taskRepository, artifactRepository, executor, null);
+        SearchIndexMaintenanceService indexMaintenanceService = mock(SearchIndexMaintenanceService.class);
+        WorkflowDebugService service = new WorkflowDebugService(
+                taskRepository, artifactRepository, executor, null, indexMaintenanceService);
         var embedding = task(WorkflowStage.EMBEDDING, StageTaskStatus.SUCCEEDED, 7);
         var indexing = task(WorkflowStage.INDEXING, StageTaskStatus.SUCCEEDED, 8);
         when(taskRepository.findByVideoIdOrderByStageSequenceAsc("video-1")).thenReturn(List.of(embedding, indexing));
@@ -46,7 +49,9 @@ class WorkflowDebugServiceTest {
 
         assertThat(embedding.getStatus()).isEqualTo(StageTaskStatus.PENDING);
         assertThat(indexing.getStatus()).isEqualTo(StageTaskStatus.PENDING);
-        verify(artifactRepository).deleteByVideoIdAndArtifactTypeIn("video-1", List.of("EMBEDDING_TEXT", "READY"));
+        verify(indexMaintenanceService).deleteVideo("video-1");
+        verify(artifactRepository).deleteByVideoIdAndArtifactTypeIn("video-1",
+                List.of("EMBEDDING_TEXT", "INDEX_VERSION", "INDEX_TEXT", "IMAGE_EMBEDDING", "READY"));
     }
 
     private VideoProcessingStageTaskEntity task(WorkflowStage stage, StageTaskStatus status, int sequence) {

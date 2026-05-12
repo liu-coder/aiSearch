@@ -5,6 +5,7 @@ import com.aisearch.common.search.RecallSource;
 import com.aisearch.common.search.SearchRequest;
 import com.aisearch.search.domain.QueryIntent;
 import com.aisearch.search.domain.SearchIntent;
+import com.aisearch.search.infrastructure.ModelEmbeddingClient;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,6 +22,15 @@ import org.springframework.util.StringUtils;
 public class QueryUnderstandingService {
     private static final Pattern DATE_RANGE_PATTERN = Pattern.compile("(\\d{4}-\\d{2}-\\d{2})\\s*(?:到|至|-|~)\\s*(\\d{4}-\\d{2}-\\d{2})");
     private static final Pattern YEAR_PATTERN = Pattern.compile("(20\\d{2})年?");
+    private final ModelEmbeddingClient modelClient;
+
+    QueryUnderstandingService() {
+        this.modelClient = null;
+    }
+
+    public QueryUnderstandingService(ModelEmbeddingClient modelClient) {
+        this.modelClient = modelClient;
+    }
 
     public QueryIntent understand(SearchRequest request) {
         /*
@@ -42,7 +52,17 @@ public class QueryUnderstandingService {
         Map<String, String> filters = extractFilters(keywords);
         List<RecallSource> recallSources = buildRecallPlan(type, intent, filters);
         String semanticQuery = hasText ? normalizeSemanticQuery(request.text(), filters) : "image:" + request.imageUrl();
-        return new QueryIntent(type, intent, request.text(), request.imageUrl(), semanticQuery, keywords, filters, recallSources);
+        ModelUnderstanding modelUnderstanding = modelUnderstanding(request.text(), semanticQuery, filters);
+        return new QueryIntent(
+                type,
+                modelUnderstanding.intent() == null ? intent : modelUnderstanding.intent(),
+                request.text(),
+                request.imageUrl(),
+                modelUnderstanding.semanticQuery(),
+                keywords,
+                modelUnderstanding.filters(),
+                recallSources,
+                sourceWeights(type, recallSources));
     }
 
     private List<String> tokenize(String text) {
@@ -137,5 +157,68 @@ public class QueryUnderstandingService {
         }
         semantic = semantic.trim().replaceAll("\\s+", " ");
         return semantic.isEmpty() ? text : semantic;
+    }
+
+    private Map<RecallSource, Double> sourceWeights(QueryType type, List<RecallSource> sources) {
+        Map<RecallSource, Double> weights = new LinkedHashMap<>();
+        for (RecallSource source : sources) {
+            double weight = switch (source) {
+                case IMAGE_VECTOR -> type == QueryType.IMAGE ? 1.25 : 1.15;
+                case TEXT_VECTOR, SEGMENT_VECTOR -> 1.1;
+                case KEYWORD, ASR, OCR -> 1.0;
+                case METADATA -> 0.9;
+            };
+            weights.put(source, weight);
+        }
+        return weights;
+    }
+
+    private ModelUnderstanding modelUnderstanding(String rawText, String semanticQuery, Map<String, String> ruleFilters) {
+        if (modelClient == null || !StringUtils.hasText(rawText)) {
+            return new ModelUnderstanding(null, semanticQuery, ruleFilters);
+        }
+        try {
+            String response = modelClient.analyze("QUERY_UNDERSTANDING\n" + rawText, List.of(
+                    "请输出 rewrite=查询改写",
+                    "可选输出 intent=SEMANTIC_VIDEO_SEARCH|EXACT_ENTITY_SEARCH|MIXED_EVIDENCE_SEARCH",
+                    "可选输出 person=人物 scene=场景 startDate=YYYY-MM-DD endDate=YYYY-MM-DD"));
+            return parseModelUnderstanding(response, semanticQuery, ruleFilters);
+        } catch (RuntimeException ex) {
+            return new ModelUnderstanding(null, semanticQuery, ruleFilters);
+        }
+    }
+
+    private ModelUnderstanding parseModelUnderstanding(String response, String fallbackSemanticQuery, Map<String, String> ruleFilters) {
+        Map<String, String> filters = new LinkedHashMap<>(ruleFilters);
+        String rewritten = fallbackSemanticQuery;
+        SearchIntent modelIntent = null;
+        if (response != null) {
+            for (String line : response.split("\\R")) {
+                int split = line.indexOf('=');
+                if (split <= 0) {
+                    continue;
+                }
+                String key = line.substring(0, split).trim();
+                String value = line.substring(split + 1).trim();
+                if (!StringUtils.hasText(value)) {
+                    continue;
+                }
+                if ("rewrite".equalsIgnoreCase(key)) {
+                    rewritten = value;
+                } else if ("intent".equalsIgnoreCase(key)) {
+                    try {
+                        modelIntent = SearchIntent.valueOf(value);
+                    } catch (IllegalArgumentException ignored) {
+                        modelIntent = null;
+                    }
+                } else if (List.of("person", "scene", "startDate", "endDate").contains(key)) {
+                    filters.put(key, value);
+                }
+            }
+        }
+        return new ModelUnderstanding(modelIntent, rewritten, filters);
+    }
+
+    private record ModelUnderstanding(SearchIntent intent, String semanticQuery, Map<String, String> filters) {
     }
 }

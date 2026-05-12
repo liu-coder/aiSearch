@@ -30,6 +30,7 @@ public class ElasticsearchIndexWriter implements SearchIndexWriter {
                         "title", document.title(),
                         "startTimeMs", document.startTimeMs(),
                         "endTimeMs", document.endTimeMs(),
+                        "indexVersion", document.indexVersion(),
                         "asrText", document.asrText(),
                         "ocrText", document.ocrText(),
                         "caption", document.caption()))
