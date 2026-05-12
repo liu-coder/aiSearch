@@ -1,0 +1,81 @@
+[pr_reviewer]
+# Enable/disable the PR reviewer feature
+enable=true
+
+# Enable/disable the ability to ask questions to the PR reviewer
+enable_ask_questions=true
+
+# Enable/disable incremental PR review (only new commits)
+enable_incremental_review=false
+
+# Maximum number of calls to the model (used for incremental review)
+max_calls_allowed=50
+
+# Number of code suggestions to provide per PR
+num_code_suggestions=4
+
+# Enable/disable final update message after all reviews are done
+final_update_message=true
+
+# Enable/disable auto approval for small PRs
+enable_auto_approval=false
+
+
+[pr_description]
+# Enable/disable the PR description feature
+enable=true
+
+# Enable/disable generating a publishable PR description
+enable_publishable_pr=true
+
+# Publish the PR description as a comment instead of updating the PR description
+publish_description_as_comment=false
+
+# Add original user description to the generated description
+add_original_user_description=true
+
+# Generate AI title for the PR
+generate_ai_title=false
+
+
+[pr_code_suggestions]
+# Enable/disable code suggestions
+enable=true
+
+# Number of code suggestions to provide
+num_code_suggestions=4
+
+# Enable/disable self-review (review your own PR)
+enable_self_review=false
+
+# Focus only on critical issues
+focus_only_on_critical=false
+
+
+[pr_questions]
+# Enable/disable answering questions about the PR
+enable=true
+
+
+[pr_add_docs]
+# Enable/disable adding documentation suggestions
+enable=true
+
+
+[pr_custom_labels]
+# Enable/disable custom labels
+enable=false
+
+
+[config]
+# Model to use (gpt-4, gpt-3.5-turbo, claude-3-opus, etc.)
+model="gpt-4o-mini"
+
+# Temperature for the model (0.0 - 1.0)
+temperature=0.2
+
+# Max tokens for the model
+max_tokens=4000
+
+# Verbosity level (info, debug)
+verbosity_level="info"
