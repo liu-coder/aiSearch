@@ -1,5 +1,11 @@
 name: PR-Agent - AI Code Review
 
+# ============================================================
+# PR-Agent GitHub Actions 工作流
+# 触发条件：PR 创建、重新打开、标记为 ready for review
+#          或在 PR 中评论时
+# ============================================================
+
 on:
   pull_request:
     types: [opened, reopened, ready_for_review]
@@ -15,10 +21,17 @@ jobs:
       contents: write
     name: Run PR Agent on every pull request
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: PR Agent action step
         id: pragent
         uses: Codium-ai/pr-agent@main
         env:
+          # API Key 配置（三选一）
+          # 1. 通义千问：设置 OPENAI_KEY + OPENAI_API_BASE
+          # 2. DeepSeek：设置 OPENAI_KEY + OPENAI_API_BASE
+          # 3. OpenAI：只设置 OPENAI_KEY
           OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
           OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

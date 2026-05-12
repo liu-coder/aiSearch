@@ -1,9 +1,17 @@
+# ============================================================
 [pr_reviewer]
-# Enable/disable the PR reviewer feature
-enable=true
+# ============================================================
 
-# Enable/disable the ability to ask questions to the PR reviewer
-enable_ask_questions=true
+# Review 时重点检查的内容（按团队优先级排序）
+enable=true                                # 启用代码审查
+enable_ask_questions=true                  # 允许向 AI 提问
+require_tests_review=true                  # 检查是否有单元测试
+require_security_review=true               # 安全问题检查
+require_focused_review=false               # 是否聚焦于单一功能（宽松）
+
+# 单次 review 最多评论数，避免信息轰炸
+max_findings_per_file=5                    # 每个文件最多5个发现
+num_code_suggestions=4                     # 每个PR最多4个建议
 
 # Enable/disable incremental PR review (only new commits)
 enable_incremental_review=false
@@ -11,67 +19,148 @@ enable_incremental_review=false
 # Maximum number of calls to the model (used for incremental review)
 max_calls_allowed=50
 
-# Number of code suggestions to provide per PR
-num_code_suggestions=4
-
 # Enable/disable final update message after all reviews are done
 final_update_message=true
 
 # Enable/disable auto approval for small PRs
 enable_auto_approval=false
 
+# -----------------------------------------------------------
+# 针对 Spring Cloud Alibaba 项目的自定义检查规则
+# 写在 extra_instructions，AI 会遵循这些约束进行 review
+# -----------------------------------------------------------
+extra_instructions = """
+你是一个资深的 Java 后端工程师，正在对 Spring Cloud Alibaba 项目做代码 Review。
+请重点检查以下问题，并用中文给出简洁明确的评论：
 
+【必须检查 - 严重问题】
+1. @Transactional 注解使用问题：
+   - 是否加在了 private 方法上（无效）
+   - 是否加在了 Controller 层（不规范）
+   - 事务方法内有远程调用（Feign）时需要提醒风险
+
+2. 空指针风险：
+   - 对象使用前未做 null 检查
+   - Optional 未正确处理
+   - 集合操作前未判空
+
+3. Feign 调用问题：
+   - 是否配置了 fallback 或 fallbackFactory
+   - 是否有重试策略考虑（避免非幂等接口重试）
+
+4. 资源泄漏：
+   - 数据库连接/流未关闭（应使用 try-with-resources）
+   - 线程池使用后未正确关闭
+
+【建议检查 - 一般问题】
+5. 日志规范：
+   - 不允许使用 System.out.println，必须用 @Slf4j + log.xxx
+   - 日志级别是否合适（敏感信息不能 info 级别打出）
+   - 日志中是否携带足够的追踪信息（traceId / 业务ID）
+
+6. 异常处理：
+   - 不允许 catch(Exception e) {} 空处理
+   - 业务异常是否都继承了统一的 BizException
+   - 异常信息是否有意义（不能只有 "error"）
+
+7. 接口规范：
+   - 返回值是否统一用 Result<T> 包装
+   - 分页接口是否限制了最大 pageSize（防止大查询）
+   - 写接口（POST/PUT/DELETE）是否考虑幂等性
+
+8. 性能隐患：
+   - 循环内是否有数据库查询（N+1 问题）
+   - 大集合操作是否有内存溢出风险
+   - 是否使用了低效的数据结构
+
+【不需要评论的内容】
+- 代码格式、缩进（交给 Checkstyle 处理）
+- 变量命名的主观偏好
+- 已有注释说明了特殊处理原因的地方
+- 测试代码中的规范问题（宽松对待）
+"""
+
+
+# ============================================================
 [pr_description]
-# Enable/disable the PR description feature
-enable=true
+# ============================================================
+# 自动生成 PR 描述的格式
+enable=true                                  # 启用 PR 描述生成
+enable_publishable_pr=true                   # 生成可发布的 PR 描述
+publish_description_as_comment=false         # 直接更新 PR 描述，不发评论
+add_original_user_description=true           # 保留用户原始描述
+generate_ai_title=false                      # 不生成 AI 标题
 
-# Enable/disable generating a publishable PR description
-enable_publishable_pr=true
+extra_instructions = """
+请用中文生成 PR 描述，格式如下：
 
-# Publish the PR description as a comment instead of updating the PR description
-publish_description_as_comment=false
+## 变更概述
+（一句话说明这个 PR 做了什么）
 
-# Add original user description to the generated description
-add_original_user_description=true
+## 变更内容
+- 功能变更：（列出主要功能变化）
+- 影响范围：（影响哪些服务/接口/表）
 
-# Generate AI title for the PR
-generate_ai_title=false
+## 测试说明
+（是否有单测，如何验证）
+
+## 注意事项
+（上线/联调需要注意的点，如新增配置项、数据库变更等）
+"""
 
 
+# ============================================================
 [pr_code_suggestions]
-# Enable/disable code suggestions
-enable=true
-
-# Number of code suggestions to provide
-num_code_suggestions=4
-
-# Enable/disable self-review (review your own PR)
-enable_self_review=false
-
-# Focus only on critical issues
-focus_only_on_critical=false
+# ============================================================
+# 代码建议配置
+enable=true                                  # 启用代码建议
+num_code_suggestions=4                       # 最多4个建议
+enable_self_review=false                     # 禁用自我审查
+focus_only_on_critical=false                 # 不仅关注关键问题
 
 
+# ============================================================
 [pr_questions]
-# Enable/disable answering questions about the PR
+# ============================================================
+# 允许在 PR 中向 AI 提问
 enable=true
 
-
+# ============================================================
 [pr_add_docs]
-# Enable/disable adding documentation suggestions
+# ============================================================
+# 文档建议
 enable=true
 
-
+# ============================================================
 [pr_custom_labels]
-# Enable/disable custom labels
+# ============================================================
+# 自定义标签（暂不启用）
 enable=false
 
+# ============================================================
+[github]
+# GitHub 专用配置
+# ============================================================
+# GitHub Token 通过环境变量 GITHUB_TOKEN 自动获取
+
+
+# ============================================================
+# PR-Agent 配置文件 - AI视频检索系统
+# 文件名：.pr_agent.toml
+# 放置位置：项目根目录
+# ============================================================
 
 [config]
-# Model to use (gpt-4, gpt-3.5-turbo, claude-3-opus, etc.)
-# For Alibaba Qwen: qwen-max, qwen-plus, qwen-turbo
-# For DeepSeek: deepseek-chat, deepseek-coder
-model="qwen-max"
+# 使用的模型 - 按需切换
+# 通义千问（国内推荐，需配合 OPENAI_API_BASE 环境变量）
+model = "qwen-plus"
+# OpenAI GPT-4o-mini（便宜且够用）
+# model = "gpt-4o-mini"
+# DeepSeek（性价比高）
+# model = "deepseek-chat"
+
+# 语言设置：让 AI 用中文给 Review 评论
+response_language = "zh-CN"
 
 # Temperature for the model (0.0 - 1.0)
 temperature=0.2
