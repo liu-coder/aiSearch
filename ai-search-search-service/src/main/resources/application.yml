@@ -1,0 +1,54 @@
+server:
+  port: 18081
+
+spring:
+  application:
+    name: ai-search-search-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+      config:
+        server-addr: localhost:8848
+        file-extension: yaml
+        import-check:
+          enabled: false
+  config:
+    import: optional:nacos:${spring.application.name}.yaml
+
+ai-search:
+  search:
+    elasticsearch:
+      enabled: true
+      endpoint: http://localhost:9200
+      index: ai_video_segments
+      text-fields:
+        - title^3
+        - asrText^2
+        - ocrText^2
+        - caption
+        - tags
+    milvus:
+      enabled: true
+      endpoint: http://localhost:19530
+      collection-name: ai_video_segments
+      vector-field: embedding
+      metric-type: COSINE
+      output-fields:
+        - videoId
+        - segmentId
+        - title
+        - startTimeMs
+        - endTimeMs
+    model:
+      endpoint: http://localhost:18084
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true

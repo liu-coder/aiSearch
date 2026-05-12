@@ -1,0 +1,47 @@
+server:
+  port: 18084
+
+spring:
+  application:
+    name: ai-search-model-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+      config:
+        server-addr: localhost:8848
+        file-extension: yaml
+        import-check:
+          enabled: false
+  config:
+    import: optional:nacos:${spring.application.name}.yaml
+
+ai-search:
+  models:
+    provider: deterministic
+    embedding-dimension: 1024
+    http:
+      endpoint: http://localhost:19090/embedding
+      model: bge-m3
+      api-key:
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY:}
+      embedding-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/embeddings
+      chat-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+      asr-submit-endpoint: https://dashscope.aliyuncs.com/api/v1/services/audio/asr/transcription
+      task-endpoint: https://dashscope.aliyuncs.com/api/v1/tasks/{taskId}
+      rerank-endpoint: https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank
+      embedding-dimension: 1024
+      text-embedding-model: text-embedding-v4
+      multimodal-embedding-model: multimodal-embedding-v1
+      asr-model: paraformer-v2
+      ocr-model: qwen-vl-ocr
+      caption-model: qwen3-vl-flash
+      analysis-model: qwen-plus
+      rerank-model: gte-rerank-v2
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

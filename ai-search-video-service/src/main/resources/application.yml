@@ -1,0 +1,60 @@
+server:
+  port: 18082
+
+spring:
+  application:
+    name: ai-search-video-service
+  datasource:
+    url: jdbc:mysql://localhost:3306/ai_search?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+  flyway:
+    enabled: true
+    table: flyway_schema_history_video
+    locations: classpath:db/migration/video
+    baseline-on-migrate: true
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+      config:
+        server-addr: localhost:8848
+        file-extension: yaml
+        import-check:
+          enabled: false
+  config:
+    import: optional:nacos:${spring.application.name}.yaml
+
+rocketmq:
+  name-server: localhost:9876
+  producer:
+    group: ai-search-video-producer
+    send-message-timeout: 3000
+
+ai-search:
+  storage:
+    minio:
+      endpoint: http://localhost:9000
+      access-key: minioadmin
+      secret-key: minioadmin
+      raw-bucket: ai-video-raw
+      presigned-upload-expire-minutes: 30
+  rocketmq:
+    video-uploaded-topic: video.uploaded
+  outbox:
+    poll-delay-ms: 3000
+    max-attempts: 5
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

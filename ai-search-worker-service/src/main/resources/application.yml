@@ -1,0 +1,100 @@
+server:
+  port: 18083
+
+spring:
+  application:
+    name: ai-search-worker-service
+  datasource:
+    url: jdbc:mysql://localhost:3306/ai_search?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
+    username: root
+    password: root
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+  flyway:
+    enabled: true
+    table: flyway_schema_history_worker
+    locations: classpath:db/migration/worker
+    baseline-on-migrate: true
+  cloud:
+    nacos:
+      discovery:
+        server-addr: localhost:8848
+      config:
+        server-addr: localhost:8848
+        file-extension: yaml
+        import-check:
+          enabled: false
+  config:
+    import: optional:nacos:${spring.application.name}.yaml
+
+rocketmq:
+  name-server: localhost:9876
+  consumer:
+    group: ai-search-worker-consumer
+
+ai-search:
+  worker:
+    poll-delay-ms: 5000
+    workspace: E:/workspace/docker/data/ai-search-worker
+    embedding-dimension: 1024
+    initialize-index-on-startup: true
+    max-attempts: 3
+    running-timeout-ms: 300000
+    elasticsearch:
+      endpoint: http://localhost:9200
+      index: ai_video_segments
+    milvus:
+      endpoint: http://localhost:19530
+      collection-name: ai_video_segments
+      primary-field: segmentId
+      vector-field: embedding
+      image-vector-field: imageEmbedding
+      metric-type: COSINE
+    model:
+      endpoint: http://localhost:18084
+      max-concurrent-calls: 4
+      cache-max-entries: 1000
+    storage:
+      endpoint: http://localhost:9000
+      access-key: minioadmin
+      secret-key: minioadmin
+      processed-bucket: ai-video-processed
+      presigned-expire-minutes: 60
+    media-strategy:
+      default-duration-seconds: 60
+      short-video-seconds: 120
+      medium-video-seconds: 900
+      short-segment-seconds: 15
+      medium-segment-seconds: 45
+      long-segment-seconds: 120
+      max-frames: 12
+      max-segments: 12
+      large-file-bytes: 524288000
+      large-file-max-frames: 8
+      content-aware-enabled: true
+      scene-detection-enabled: true
+      silence-detection-enabled: true
+      scene-threshold: 0.35
+      silence-noise: -30dB
+      silence-duration-seconds: 0.8
+      min-content-segment-seconds: 8
+      max-content-segment-seconds: 90
+  ffmpeg:
+    command: ffmpeg
+    ffprobe-command: ffprobe
+  rocketmq:
+    namesrv-addr: localhost:9876
+    video-uploaded-topic: video.uploaded
+    video-uploaded-consumer-group: ai-search-worker-video-uploaded
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
