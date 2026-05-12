@@ -69,7 +69,9 @@ enable=false
 
 [config]
 # Model to use (gpt-4, gpt-3.5-turbo, claude-3-opus, etc.)
-model="gpt-4o-mini"
+# For Alibaba Qwen: qwen-max, qwen-plus, qwen-turbo
+# For DeepSeek: deepseek-chat, deepseek-coder
+model="qwen-max"
 
 # Temperature for the model (0.0 - 1.0)
 temperature=0.2
