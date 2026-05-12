@@ -162,6 +162,8 @@ public class DefaultStageProcessor implements StageProcessor {
         if (frames.isEmpty()) {
             frames = List.of(new FrameRecord(task.getVideoId() + "-seg-0001", 0, 0, ""));
         }
+        String indexVersion = String.valueOf(System.currentTimeMillis());
+        artifactService.upsert(task.getVideoId(), "INDEX_VERSION", indexVersion);
         for (FrameRecord frame : frames) {
             String segmentAsr = segmentAsrText(asrSegments, frame, asr);
             String segmentOcr = segmentText(ocr, frame.segmentId());
@@ -177,6 +179,7 @@ public class DefaultStageProcessor implements StageProcessor {
                     asset.getTitle(),
                     frame.startTimeMs(),
                     frame.endTimeMs(),
+                    indexVersion,
                     segmentAsr,
                     segmentOcr,
                     segmentCaption,

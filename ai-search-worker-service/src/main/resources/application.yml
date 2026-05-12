@@ -59,6 +59,9 @@ ai-search:
     model:
       endpoint: http://localhost:18084
       max-concurrent-calls: 4
+      qps-limit: 8
+      max-attempts: 3
+      initial-backoff-ms: 200
       cache-max-entries: 1000
     storage:
       endpoint: http://localhost:9000

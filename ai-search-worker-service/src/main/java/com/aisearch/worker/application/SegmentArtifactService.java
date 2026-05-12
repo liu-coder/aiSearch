@@ -57,6 +57,25 @@ public class SegmentArtifactService {
         return segmentRepository.findByVideoIdOrderByStartTimeMsAsc(videoId);
     }
 
+    public SegmentEvidence segmentEvidence(String videoId, String segmentId) {
+        VideoSegmentEntity segment = segmentRepository.findById(segmentId)
+                .filter(value -> videoId.equals(value.getVideoId()))
+                .orElseThrow(() -> new IllegalArgumentException("视频片段不存在: " + videoId + " " + segmentId));
+        Map<String, String> artifacts = artifactRepository.findByVideoId(videoId).stream()
+                .filter(artifact -> segmentId.equals(artifact.getSegmentId()))
+                .collect(Collectors.toMap(VideoSegmentArtifactEntity::getArtifactType, VideoSegmentArtifactEntity::getPayload));
+        return new SegmentEvidence(
+                videoId,
+                segmentId,
+                segment.getStartTimeMs(),
+                segment.getEndTimeMs(),
+                artifacts.getOrDefault("ASR_TEXT", ""),
+                artifacts.getOrDefault("OCR_TEXT", ""),
+                artifacts.getOrDefault("CAPTION", ""),
+                artifacts.getOrDefault("FRAME_URL", ""),
+                artifacts);
+    }
+
     public Map<String, Map<String, String>> artifactsBySegment(String videoId) {
         return artifactRepository.findByVideoId(videoId).stream()
                 .collect(Collectors.groupingBy(
@@ -67,5 +86,17 @@ public class SegmentArtifactService {
     @Transactional
     public void deleteArtifacts(String videoId, List<String> artifactTypes) {
         artifactRepository.deleteByVideoIdAndArtifactTypeIn(videoId, artifactTypes);
+    }
+
+    public record SegmentEvidence(
+            String videoId,
+            String segmentId,
+            long startTimeMs,
+            long endTimeMs,
+            String asrText,
+            String ocrText,
+            String caption,
+            String keyFrameUrl,
+            Map<String, String> artifacts) {
     }
 }

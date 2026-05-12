@@ -2,11 +2,15 @@ package com.aisearch.worker.infrastructure.model;
 
 import com.aisearch.common.asr.TimedTextSegment;
 import com.aisearch.worker.infrastructure.config.WorkerPipelineProperties;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -17,12 +21,21 @@ import org.springframework.web.client.RestClient;
 public class ModelGatewayClient {
     private final RestClient restClient;
     private final Semaphore modelCallLimiter;
+    private final MeterRegistry meterRegistry;
+    private final int qpsLimit;
+    private final int maxAttempts;
+    private final long initialBackoffMs;
+    private final AtomicLong nextAllowedCallAtMs = new AtomicLong(0);
     private final int cacheMaxEntries;
     private final Map<String, Object> cache;
 
-    public ModelGatewayClient(RestClient.Builder builder, WorkerPipelineProperties properties) {
+    public ModelGatewayClient(RestClient.Builder builder, WorkerPipelineProperties properties, MeterRegistry meterRegistry) {
         this.restClient = builder.baseUrl(properties.getModel().getEndpoint()).build();
+        this.meterRegistry = meterRegistry;
         this.modelCallLimiter = new Semaphore(Math.max(1, properties.getModel().getMaxConcurrentCalls()));
+        this.qpsLimit = Math.max(0, properties.getModel().getQpsLimit());
+        this.maxAttempts = Math.max(1, properties.getModel().getMaxAttempts());
+        this.initialBackoffMs = Math.max(0, properties.getModel().getInitialBackoffMs());
         this.cacheMaxEntries = Math.max(0, properties.getModel().getCacheMaxEntries());
         this.cache = new LinkedHashMap<>(16, 0.75f, true);
     }
@@ -127,7 +140,10 @@ public class ModelGatewayClient {
         try {
             modelCallLimiter.acquire();
             acquired = true;
-            return responseData(path, body);
+            return withMetrics(path, () -> withRetry(() -> {
+                throttleQps();
+                return responseData(path, body);
+            }));
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("模型调用等待并发令牌时被中断", ex);
@@ -135,6 +151,71 @@ public class ModelGatewayClient {
             if (acquired) {
                 modelCallLimiter.release();
             }
+        }
+    }
+
+    private Object withMetrics(String path, Supplier<Object> supplier) {
+        Timer.Sample sample = Timer.start(meterRegistry);
+        try {
+            Object result = supplier.get();
+            meterRegistry.counter("ai_search_model_call_total", "path", path, "result", "success").increment();
+            return result;
+        } catch (RuntimeException ex) {
+            meterRegistry.counter("ai_search_model_call_total", "path", path, "result", "failure").increment();
+            throw ex;
+        } finally {
+            sample.stop(meterRegistry.timer("ai_search_model_call_duration", "path", path));
+        }
+    }
+
+    private Object withRetry(Supplier<Object> supplier) {
+        RuntimeException last = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return supplier.get();
+            } catch (RuntimeException ex) {
+                last = ex;
+                if (attempt >= maxAttempts) {
+                    break;
+                }
+                sleepBackoff(attempt);
+            }
+        }
+        throw last == null ? new IllegalStateException("模型调用失败") : last;
+    }
+
+    private void throttleQps() {
+        if (qpsLimit <= 0) {
+            return;
+        }
+        long spacingMs = Math.max(1L, 1000L / qpsLimit);
+        while (true) {
+            long now = System.currentTimeMillis();
+            long current = nextAllowedCallAtMs.get();
+            long scheduled = Math.max(now, current);
+            if (nextAllowedCallAtMs.compareAndSet(current, scheduled + spacingMs)) {
+                long waitMs = scheduled - now;
+                if (waitMs > 0) {
+                    sleep(waitMs);
+                }
+                return;
+            }
+        }
+    }
+
+    private void sleepBackoff(int attempt) {
+        if (initialBackoffMs <= 0) {
+            return;
+        }
+        sleep(initialBackoffMs * (1L << Math.min(10, attempt - 1)));
+    }
+
+    private void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("模型调用等待退避时被中断", ex);
         }
     }
 

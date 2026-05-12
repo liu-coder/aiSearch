@@ -1,14 +1,12 @@
 create table if not exists video_segment (
-    id bigint not null auto_increment primary key,
+    segment_id varchar(120) not null primary key,
     video_id varchar(80) not null,
-    segment_id varchar(120) not null,
     start_time_ms bigint not null,
     end_time_ms bigint not null,
     key_frame_time_ms bigint not null,
     strategy_name varchar(80) not null,
     created_at datetime(6) not null,
     updated_at datetime(6) not null,
-    unique key uk_video_segment_id (segment_id),
     index idx_video_segment_video_time (video_id, start_time_ms, end_time_ms)
 );
 

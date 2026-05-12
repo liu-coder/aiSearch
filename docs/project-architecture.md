@@ -146,7 +146,7 @@
 ```text
 SearchController
   -> SearchUseCase
-  -> QueryUnderstandingService：识别 TEXT / IMAGE / MIXED，生成 SearchIntent、semanticQuery、filters、recallSources
+  -> QueryUnderstandingService：识别 TEXT / IMAGE / MIXED，生成 SearchIntent、semanticQuery、filters、recallSources、sourceWeights
   -> HybridRecallOrchestrator：按 recallSources 调用关键词、文本向量、图片向量、OCR、ASR、元数据等适配器
   -> CandidateMergeService
   -> RerankService
@@ -170,6 +170,7 @@ SearchController
 - `ElasticsearchRecallAdapter`：已接入 REST `_search`，负责 `KEYWORD`、`ASR`、`OCR`、`METADATA`
 - `MilvusRecallAdapter`：已接入 REST `/v2/vectordb/entities/search`，负责 `TEXT_VECTOR`、`IMAGE_VECTOR`、`SEGMENT_VECTOR`
 - `ModelEmbeddingClient`：已接入模型服务 `/api/models/embedding`，为 Milvus 查询生成向量
+- 查询理解支持规则增强 + 可选模型增强：规则负责稳定提取时间、作者、标签；模型可输出查询改写、人物/场景条件和意图，召回计划会附带 `sourceWeights` 供多路融合使用。
 - `MetadataFilterAdapter`
 - `RedisSearchCache`
 - `ModelAnalysisClient`
@@ -184,6 +185,7 @@ SearchController
 | `ai-search.search.milvus.collection-name` | `ai_video_segments` | 视频片段向量 collection |
 | `ai-search.search.milvus.vector-field` | `embedding` | 向量字段名 |
 | `ai-search.search.model.endpoint` | `http://localhost:18084` | 模型服务地址 |
+| `ai-search.security.api-key` | 空 | 可选内部 API Key；配置后保护 `/api/**` 上传、搜索、调试和重跑接口 |
 
 ### ai-search-video-service
 
@@ -271,6 +273,8 @@ SearchController
 | 接口名 | 方法 | 路径 | 入参 | 出参 | 当前状态 |
 | --- | --- | --- | --- | --- | --- |
 | 查询视频索引阶段 | `GET` | `/api/workflows/video-indexing/stages` | 无 | `ApiResponse<List<WorkflowStage>>` | 已实现 |
+| 查看单片段证据 | `GET` | `/api/workflows/video-indexing/videos/{videoId}/segments/{segmentId}` | `videoId`, `segmentId` | `ApiResponse<SegmentEvidence>` | 已实现，返回 startTimeMs/endTimeMs、ASR/OCR/Caption 和关键帧 URL，前端可按时间定位播放 |
+| 删除单视频索引 | `POST` | `/api/workflows/video-indexing/videos/{videoId}/delete-index` | `videoId` | `ApiResponse<Void>` | 已实现，清理 ES 与 Milvus 中该视频所有片段 |
 
 消息消费：
 
@@ -297,6 +301,22 @@ Worker 可靠性机制：
 - 未达到 `ai-search.worker.max-attempts` 的失败任务会回到 `PENDING` 等待重试。
 - 达到最大重试次数后标记 `FAILED` 并保留失败原因。
 - 默认启动时会初始化 ES index 和 Milvus collection，可通过 `ai-search.worker.initialize-index-on-startup=false` 关闭。
+- 重建索引会先调用 `SearchIndexMaintenanceService.deleteVideo` 清理 ES/Milvus 旧片段，再生成新的 `INDEX_VERSION` 并写入片段文档，避免重复片段残留。
+- 关键帧会生成 `imageEmbedding` 写入 Milvus；图片查询走 `/api/models/image-embedding`，使用 `IMAGE_VECTOR` 与文本/片段召回加权融合。
+
+生产成本控制已经内置到 worker 的 `ModelGatewayClient`：
+
+- 单视频最大片段数：`ai-search.worker.media-strategy.max-segments`
+- 模型并发：`ai-search.worker.model.max-concurrent-calls`
+- QPS 限流：`ai-search.worker.model.qps-limit`
+- 失败退避：`ai-search.worker.model.max-attempts`、`initial-backoff-ms`
+- 相同请求缓存：`ai-search.worker.model.cache-max-entries`
+
+观测能力：
+
+- `TraceIdFilter` 统一生成/透传 `X-Trace-Id`，并写入 MDC。
+- 模型调用暴露 Micrometer 指标：`ai_search_model_call_total`、`ai_search_model_call_duration`。
+- ES/Milvus 写入异常会抛出到 worker 任务执行器，由失败分类、重试和 `FAILED` 状态承接；生产告警可直接订阅失败任务和 Prometheus 指标。
 
 ### 模型选型
 

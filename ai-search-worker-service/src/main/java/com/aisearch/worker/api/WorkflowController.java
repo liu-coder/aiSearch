@@ -3,6 +3,7 @@ package com.aisearch.worker.api;
 import com.aisearch.common.api.ApiResponse;
 import com.aisearch.common.workflow.WorkflowStage;
 import com.aisearch.worker.application.WorkflowDebugService;
+import com.aisearch.worker.application.SegmentArtifactService;
 import com.aisearch.worker.application.VideoProcessingStatusService;
 import com.aisearch.worker.application.WorkflowPlanService;
 import java.util.List;
@@ -57,6 +58,13 @@ public class WorkflowController {
         return ApiResponse.ok(debugService.segmentArtifacts(videoId));
     }
 
+    @GetMapping("/video-indexing/videos/{videoId}/segments/{segmentId}")
+    public ApiResponse<SegmentArtifactService.SegmentEvidence> segmentEvidence(
+            @PathVariable String videoId,
+            @PathVariable String segmentId) {
+        return ApiResponse.ok(debugService.segmentEvidence(videoId, segmentId));
+    }
+
     @PostMapping("/video-indexing/videos/{videoId}/stages/{stage}/rerun")
     public ApiResponse<Void> rerunStage(@PathVariable String videoId, @PathVariable WorkflowStage stage) {
         debugService.rerunStage(videoId, stage);
@@ -66,6 +74,12 @@ public class WorkflowController {
     @PostMapping("/video-indexing/videos/{videoId}/rebuild-index")
     public ApiResponse<Void> rebuildIndex(@PathVariable String videoId) {
         debugService.rebuildIndex(videoId);
+        return ApiResponse.ok(null);
+    }
+
+    @PostMapping("/video-indexing/videos/{videoId}/delete-index")
+    public ApiResponse<Void> deleteIndex(@PathVariable String videoId) {
+        debugService.deleteIndex(videoId);
         return ApiResponse.ok(null);
     }
 }

@@ -10,6 +10,7 @@ public record SearchPlan(
         String intent,
         String semanticQuery,
         Map<String, String> filters,
-        List<RecallSource> recallSources
+        List<RecallSource> recallSources,
+        Map<RecallSource, Double> sourceWeights
 ) {
 }

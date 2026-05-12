@@ -21,23 +21,34 @@ public class WorkflowDebugService {
     private final VideoProcessingArtifactRepository artifactRepository;
     private final VideoProcessingTaskExecutor executor;
     private final SegmentArtifactService segmentArtifactService;
+    private final SearchIndexMaintenanceService indexMaintenanceService;
 
     public WorkflowDebugService(
             VideoProcessingStageTaskRepository taskRepository,
             VideoProcessingArtifactRepository artifactRepository,
             VideoProcessingTaskExecutor executor,
-            SegmentArtifactService segmentArtifactService) {
+            SegmentArtifactService segmentArtifactService,
+            SearchIndexMaintenanceService indexMaintenanceService) {
         this.taskRepository = taskRepository;
         this.artifactRepository = artifactRepository;
         this.executor = executor;
         this.segmentArtifactService = segmentArtifactService;
+        this.indexMaintenanceService = indexMaintenanceService;
     }
 
     WorkflowDebugService(
             VideoProcessingStageTaskRepository taskRepository,
             VideoProcessingArtifactRepository artifactRepository,
             VideoProcessingTaskExecutor executor) {
-        this(taskRepository, artifactRepository, executor, null);
+        this(taskRepository, artifactRepository, executor, null, null);
+    }
+
+    WorkflowDebugService(
+            VideoProcessingStageTaskRepository taskRepository,
+            VideoProcessingArtifactRepository artifactRepository,
+            VideoProcessingTaskExecutor executor,
+            SegmentArtifactService segmentArtifactService) {
+        this(taskRepository, artifactRepository, executor, segmentArtifactService, null);
     }
 
     public VideoProcessingStatus status(String videoId) {
@@ -71,6 +82,13 @@ public class WorkflowDebugService {
         return segmentArtifactService.artifactsBySegment(videoId);
     }
 
+    public SegmentArtifactService.SegmentEvidence segmentEvidence(String videoId, String segmentId) {
+        if (segmentArtifactService == null) {
+            throw new IllegalStateException("片段产物服务未初始化");
+        }
+        return segmentArtifactService.segmentEvidence(videoId, segmentId);
+    }
+
     public Map<String, String> stageArtifacts(String videoId) {
         Map<String, String> result = new LinkedHashMap<>();
         for (VideoProcessingArtifactEntity artifact : artifactRepository.findByVideoId(videoId)) {
@@ -87,8 +105,18 @@ public class WorkflowDebugService {
 
     @Transactional
     public VideoProcessingStatus rebuildIndex(String videoId) {
+        if (indexMaintenanceService != null) {
+            indexMaintenanceService.deleteVideo(videoId);
+        }
         resetFromStage(videoId, WorkflowStage.EMBEDDING);
         return status(videoId);
+    }
+
+    public void deleteIndex(String videoId) {
+        if (indexMaintenanceService == null) {
+            throw new IllegalStateException("索引维护服务未初始化");
+        }
+        indexMaintenanceService.deleteVideo(videoId);
     }
 
     private void resetFromStage(String videoId, WorkflowStage stage) {
@@ -123,6 +151,11 @@ public class WorkflowDebugService {
         }
         if (stage.ordinal() <= WorkflowStage.EMBEDDING.ordinal()) {
             types.add("EMBEDDING_TEXT");
+        }
+        if (stage.ordinal() <= WorkflowStage.INDEXING.ordinal()) {
+            types.add("INDEX_VERSION");
+            types.add("INDEX_TEXT");
+            types.add("IMAGE_EMBEDDING");
         }
         types.add("READY");
         return types.stream().distinct().toList();

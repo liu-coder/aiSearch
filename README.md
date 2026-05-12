@@ -108,7 +108,14 @@ RocketMQ 链路：
 - Caption 处理器
 - Embedding 模型处理器
 
-Worker 启动时会通过 `SearchIndexInitializer` 初始化 Elasticsearch index 和 Milvus collection。任务执行支持 `RUNNING` 超时回收、失败重试和最大重试次数控制。
+Worker 启动时会通过 `SearchIndexInitializer` 初始化 Elasticsearch index 和 Milvus collection。任务执行支持 `RUNNING` 超时回收、失败重试和最大重试次数控制。重建索引会先删除该视频在 ES/Milvus 中的旧片段，再写入带 `INDEX_VERSION` 的新片段，避免重复残留。
+
+片段证据接口：
+
+- `GET /api/workflows/video-indexing/videos/{videoId}/slice-plan`
+- `GET /api/workflows/video-indexing/videos/{videoId}/segments/artifacts`
+- `GET /api/workflows/video-indexing/videos/{videoId}/segments/{segmentId}`
+- `POST /api/workflows/video-indexing/videos/{videoId}/delete-index`
 
 模型服务支持两种 provider：
 
@@ -127,6 +134,15 @@ Worker 启动时会通过 `SearchIndexInitializer` 初始化 Elasticsearch index
 | 视觉描述 | `qwen3-vl-flash` | 关键帧 caption |
 | 辩证分析 | `qwen-plus` | 汇总证据、输出正反分析 |
 | 精排 | `gte-rerank-v2` | 多路召回候选 rerank |
+
+生产配置要点：
+
+- `ai-search.worker.model.max-concurrent-calls`：模型调用并发
+- `ai-search.worker.model.qps-limit`：模型 QPS 限流
+- `ai-search.worker.model.max-attempts` / `initial-backoff-ms`：失败退避
+- `ai-search.worker.model.cache-max-entries`：相同片段内容缓存
+- `ai-search.security.api-key`：配置后保护 `/api/**`，请求需携带 `X-AI-Search-Api-Key`
+- 所有服务响应会带 `X-Trace-Id`，用于串联上传、事件、worker、模型和搜索日志
 
 ## 设计说明
 
