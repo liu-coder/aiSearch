@@ -2,36 +2,64 @@ name: PR-Agent - AI Code Review
 
 # ============================================================
 # PR-Agent GitHub Actions 工作流
-# 触发条件：PR 创建、重新打开、标记为 ready for review
-#          或在 PR 中评论时
+#
+# 触发条件：
+#   - PR 创建、重新打开、push 新提交、标记 ready for review
+#   - 在 PR（非 Issue）中评论 /review /improve /describe 等命令
+#
+# 配置说明：
+#   所有模型参数、review 规则均在 .pr_agent.toml 中维护。
+#   此文件只负责触发逻辑和鉴权，避免两处配置冲突。
 # ============================================================
 
 on:
   pull_request:
-    types: [opened, reopened, ready_for_review]
+    types: [opened, reopened, synchronize, ready_for_review, review_requested]
   issue_comment:
     types: [created]
+  # workflow_dispatch 已移除：手动触发时无 PR 上下文，PR-Agent 会报错
 
 jobs:
   pr_agent_job:
+    # 双重过滤：
+    # 1. 排除 Bot 触发（防止 PR-Agent 自己的评论触发新一轮 review）
+    # 2. issue_comment 事件只在 PR 评论时运行，普通 Issue 评论跳过
+    if: |
+      github.event.sender.type != 'Bot' &&
+      (
+        github.event_name != 'issue_comment' ||
+        github.event.issue.pull_request != null
+      )
+
     runs-on: ubuntu-latest
+
     permissions:
-      issues: write
-      pull-requests: write
-      contents: write
+      issues: write          # 评论 issue（命令回复需要）
+      pull-requests: write   # 评论 PR、更新描述
+      contents: read         # 读取代码内容即可，无需 write
+
     name: Run PR Agent on every pull request
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Validate required secrets
+        shell: bash
+        run: |
+          if [ -z "${{ secrets.DEEPSEEK_KEY }}" ]; then
+            echo "::error::缺少 DEEPSEEK_KEY secret，请在仓库 Settings → Secrets 中配置。"
+            exit 1
+          fi
+          echo "DEEPSEEK_KEY secret 已配置。"
 
       - name: PR Agent action step
         id: pragent
-        uses: Codium-ai/pr-agent@main
+        # 固定版本号，避免上游 main 分支变更导致工作流不稳定。
+        # 定期检查新版本：https://github.com/The-PR-Agent/pr-agent/releases
+        uses: the-pr-agent/pr-agent@v0.26
         env:
-          # 通过 OpenAI 兼容协议接入 DeepSeek
-          # LiteLLM 读取的是 OPENAI_API_KEY，把仓库 secret OPENAI_KEY 映射过来即可
-          # 同时给 PR-Agent 自身保留 OPENAI_KEY，二者都指向同一个 secret
-          OPENAI_API_KEY: ${{ secrets.OPENAI_KEY }}
-          OPENAI_KEY: ${{ secrets.OPENAI_KEY }}
-          OPENAI_API_BASE: ${{ secrets.OPENAI_API_BASE }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # LiteLLM DeepSeek provider 使用 DEEPSEEK_API_KEY
+          # DEEPSEEK__KEY（双下划线）为冗余写法，已移除
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_KEY }}
+          # 其余所有配置（model、review 规则、语言等）
+          # 统一在 .pr_agent.toml 中维护，此处不重复声明
+          # 避免 yml env 优先级高于 toml 导致 toml 配置失效
