@@ -153,8 +153,7 @@ enable=false
 [config]
 # 使用的模型 - 按需切换
 # 通义千问（国内推荐，需配合 OPENAI_API_BASE 环境变量）
-model = "qwen-max"
-# 备选模型：qwen-plus, qwen-turbo
+model = "DeepSeek-V4-Flash"
 # OpenAI GPT-4o-mini（便宜且够用）
 # model = "gpt-4o-mini"
 # DeepSeek（性价比高）
