@@ -3,7 +3,13 @@ COMMIT_MSG_FILE=$1
 COMMIT_SOURCE=$2
 
 if [ -n "$COMMIT_SOURCE" ]; then
-  exit 0
+  if [ "$COMMIT_SOURCE" != "message" ]; then
+    exit 0
+  fi
+
+  if [ -f "$COMMIT_MSG_FILE" ] && grep -vE '^[[:space:]]*(#.*)?$' "$COMMIT_MSG_FILE" >/dev/null 2>&1; then
+    exit 0
+  fi
 fi
 
 API_KEY="${DEEPSEEK_API_KEY:-}"
