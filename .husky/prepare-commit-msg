@@ -11,7 +11,7 @@ if [ -z "$DEEPSEEK_API_KEY" ]; then
   exit 0
 fi
 
-DIFF=$(git diff --cached --diff-algorithm=minimal | head -c 4000)
+DIFF=$(git diff --cached --diff-algorithm=minimal | head -c 4000 2>/dev/null || git diff --cached --diff-algorithm=minimal | dd bs=4000 count=1 2>/dev/null || git diff --cached --diff-algorithm=minimal)
 
 if [ -z "$DIFF" ]; then
   exit 0
