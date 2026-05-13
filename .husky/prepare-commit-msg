@@ -6,8 +6,26 @@ if [ -n "$COMMIT_SOURCE" ]; then
   exit 0
 fi
 
-if [ -z "$DEEPSEEK_API_KEY" ]; then
+API_KEY="${DEEPSEEK_API_KEY:-}"
+if [ -z "$API_KEY" ] && command -v powershell.exe >/dev/null 2>&1; then
+  API_KEY=$(powershell.exe -NoProfile -Command "\$key = [Environment]::GetEnvironmentVariable('DEEPSEEK_API_KEY', 'Process'); if (-not \$key) { \$key = [Environment]::GetEnvironmentVariable('DEEPSEEK_API_KEY', 'User') }; if (-not \$key) { \$key = [Environment]::GetEnvironmentVariable('DEEPSEEK_API_KEY', 'Machine') }; if (\$key) { [Console]::Write(\$key) }" 2>/dev/null | tr -d '\r')
+fi
+
+if [ -z "$API_KEY" ]; then
   echo "[ai-commit] 未设置 DEEPSEEK_API_KEY，跳过 AI 生成"
+  exit 0
+fi
+
+PYTHON_BIN=""
+for candidate in python3 python; do
+  if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c "import json" >/dev/null 2>&1; then
+    PYTHON_BIN="$candidate"
+    break
+  fi
+done
+
+if [ -z "$PYTHON_BIN" ]; then
+  echo "[ai-commit] 未找到可用 Python，跳过 AI 生成"
   exit 0
 fi
 
@@ -19,7 +37,7 @@ fi
 
 echo "[ai-commit] 正在生成 commit message..."
 
-REQUEST=$(python3 -c "
+REQUEST=$(printf '%s' "$DIFF" | "$PYTHON_BIN" -c "
 import json, sys
 diff = sys.stdin.read()
 payload = {
@@ -38,18 +56,15 @@ payload = {
   ]
 }
 print(json.dumps(payload))
-" << EOF
-$DIFF
-EOF
-)
+" 2>/dev/null)
 
 RESPONSE=$(curl -s --max-time 15 \
-  -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+  -H "Authorization: Bearer $API_KEY" \
   -H "Content-Type: application/json" \
   -d "$REQUEST" \
   https://api.deepseek.com/v1/chat/completions)
 
-AI_MSG=$(echo "$RESPONSE" | python3 -c "
+AI_MSG=$(echo "$RESPONSE" | "$PYTHON_BIN" -c "
 import json, sys
 try:
   data = json.load(sys.stdin)
