@@ -1,0 +1,28 @@
+{
+  "name": "aisearch",
+  "version": "1.0.0",
+  "description": "这是一个基于 Spring Cloud Alibaba 的 AI 视频检索项目。当前已经实现网关、搜索服务、视频服务、离线 worker 服务、模型服务和公共契约模块，并开始接入真实上传链路。",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "husky install"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/liu-coder/aiSearch.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/liu-coder/aiSearch/issues"
+  },
+  "homepage": "https://github.com/liu-coder/aiSearch#readme",
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}
