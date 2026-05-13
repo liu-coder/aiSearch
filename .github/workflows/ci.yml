@@ -1,0 +1,85 @@
+name: CI
+
+# ============================================================
+# Spring Cloud Alibaba 持续集成流水线
+# 触发条件：
+#   - 向 main/develop 分支推送代码
+#   - 提交 PR 到 main/develop 分支
+# ============================================================
+
+on:
+  push:
+    branches: [main, "test/**"]
+    paths:
+      - "**.java"
+      - "**.xml"
+      - "**.yml"
+      - "**.yaml"
+      - "**.properties"
+  pull_request:
+    branches: [main, "test/**"]
+    paths:
+      - "**.java"
+      - "**.xml"
+      - "**.yml"
+      - "**.yaml"
+      - "**.properties"
+
+jobs:
+  build:
+    name: 编译 & 测试
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. 拉取代码 ──────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── 2. 设置 JDK ──────────────────────────────────────
+      # 根据项目实际 JDK 版本修改 java-version（17 或 21）
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      # ── 3. 缓存 Maven 依赖（加速后续构建）────────────────
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      # ── 4. 编译检查 ───────────────────────────────────────
+      - name: 编译
+        run: mvn compile -T 4 --no-transfer-progress
+
+      # ── 5. 单元测试 ───────────────────────────────────────
+      - name: 单元测试
+        run: mvn test --no-transfer-progress
+        env:
+          # Spring Boot 测试用 test profile，隔离生产配置
+          SPRING_PROFILES_ACTIVE: test
+
+      # ── 6. 上传测试报告（失败时方便排查）────────────────
+      - name: 上传测试报告
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: "**/target/surefire-reports/*.xml"
+          retention-days: 7
+
+      # ── 7. 打包（跳过测试，测试已在上一步跑过）──────────
+      - name: 打包
+        run: mvn package -DskipTests --no-transfer-progress
+
+      # ── 8. 上传构建产物（可选，供后续部署使用）──────────
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jars
+          path: "**/target/*.jar"
+          retention-days: 3

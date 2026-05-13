@@ -1,0 +1,138 @@
+name: CI Failure Analysis
+
+# ============================================================
+# 当任意 CI 工作流失败时，自动用 AI 分析原因并评论到对应 PR
+# ============================================================
+
+on:
+  workflow_run:
+    workflows: ["CI", "Build", "Test"]   # 改成你们实际的 CI workflow 名称
+    types: [completed]
+
+jobs:
+  analyze_failure:
+    # 只在失败时运行
+    if: ${{ github.event.workflow_run.conclusion == 'failure' }}
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      pull-requests: write
+      actions: read
+
+    steps:
+      - name: 获取关联 PR 号
+        id: get_pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prs = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: `${context.repo.owner}:${context.payload.workflow_run.head_branch}`
+            });
+            if (prs.data.length === 0) {
+              console.log('没有找到关联 PR，跳过');
+              return core.setOutput('pr_number', '');
+            }
+            core.setOutput('pr_number', prs.data[0].number);
+
+      - name: 获取构建日志
+        id: get_logs
+        if: ${{ steps.get_pr.outputs.pr_number != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // 获取失败的 job 列表
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.payload.workflow_run.id
+            });
+
+            // 只取失败的 job 的日志
+            let errorLogs = '';
+            for (const job of jobs.data.jobs) {
+              if (job.conclusion === 'failure') {
+                try {
+                  const logs = await github.rest.actions.downloadJobLogsForWorkflowRun({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    job_id: job.id
+                  });
+                  // 取最后 3000 字符（错误通常在末尾）
+                  const logText = logs.data.toString().slice(-3000);
+                  errorLogs += `### Job: ${job.name}\n${logText}\n\n`;
+                } catch (e) {
+                  errorLogs += `### Job: ${job.name}\n日志获取失败\n\n`;
+                }
+              }
+            }
+
+            // 截断避免超 token
+            core.setOutput('logs', errorLogs.slice(0, 4000));
+
+      - name: AI 分析失败原因
+        id: ai_analysis
+        if: ${{ steps.get_pr.outputs.pr_number != '' }}
+        shell: bash
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_KEY }}
+          BUILD_LOGS: ${{ steps.get_logs.outputs.logs }}
+        run: |
+          RESPONSE=$(curl -s --max-time 30 \
+            -H "Authorization: Bearer $DEEPSEEK_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$(python3 -c "
+          import json, os
+          logs = os.environ.get('BUILD_LOGS', '')
+          payload = {
+            'model': 'deepseek-chat',
+            'max_tokens': 800,
+            'temperature': 0.1,
+            'messages': [
+              {
+                'role': 'system',
+                'content': '你是一个 CI/CD 专家，分析 GitHub Actions 构建失败日志。用中文简洁回答：1. 失败原因（一句话）2. 具体错误（引用关键日志行）3. 修复建议（步骤）。格式用 Markdown。'
+              },
+              {
+                'role': 'user',
+                'content': f'以下是构建失败日志：\n\n{logs}'
+              }
+            ]
+          }
+          print(json.dumps(payload))
+          ")" \
+            https://api.deepseek.com/v1/chat/completions)
+
+          AI_MSG=$(echo "$RESPONSE" | python3 -c "
+          import json, sys
+          try:
+            data = json.load(sys.stdin)
+            print(data['choices'][0]['message']['content'].strip())
+          except:
+            print('AI 分析失败，请手动查看构建日志。')
+          ")
+
+          # 写入环境变量供下一步使用
+          {
+            echo "AI_COMMENT<<EOF"
+            echo "$AI_MSG"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: 评论到 PR
+        if: ${{ steps.get_pr.outputs.pr_number != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const analysis = process.env.AI_COMMENT;
+            const runUrl = context.payload.workflow_run.html_url;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: ${{ steps.get_pr.outputs.pr_number }},
+              body: `## 🔴 CI 构建失败分析\n\n${analysis}\n\n---\n> [查看完整构建日志](${runUrl})`
+            });
