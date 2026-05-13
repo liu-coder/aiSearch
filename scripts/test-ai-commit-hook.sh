@@ -68,3 +68,27 @@ if [ "$ACTUAL" != "$EXPECTED_USER_MSG" ]; then
   echo "actual existing message: $ACTUAL" >&2
   exit 1
 fi
+
+TEMPLATE_MSG_FILE="$TMP_DIR/TEMPLATE_EDITMSG"
+printf '%s\n' "__AI_COMMIT_MESSAGE__" > "$TEMPLATE_MSG_FILE"
+PATH="$TMP_DIR:$PATH" DEEPSEEK_API_KEY="test-key" \
+  bash -c 'cd "$1" && bash "$1/prepare-commit-msg" "$2" template' bash "$TMP_DIR" "$TEMPLATE_MSG_FILE"
+
+ACTUAL="$(cat "$TEMPLATE_MSG_FILE" 2>/dev/null || true)"
+if [ "$ACTUAL" != "$EXPECTED" ]; then
+  echo "expected template marker to be replaced: $EXPECTED" >&2
+  echo "actual template marker result: $ACTUAL" >&2
+  exit 1
+fi
+
+MESSAGE_MARKER_MSG_FILE="$TMP_DIR/MESSAGE_MARKER_EDITMSG"
+printf '%s\n' "__AI_COMMIT_MESSAGE__" > "$MESSAGE_MARKER_MSG_FILE"
+PATH="$TMP_DIR:$PATH" DEEPSEEK_API_KEY="test-key" \
+  bash -c 'cd "$1" && bash "$1/prepare-commit-msg" "$2" message' bash "$TMP_DIR" "$MESSAGE_MARKER_MSG_FILE"
+
+ACTUAL="$(cat "$MESSAGE_MARKER_MSG_FILE" 2>/dev/null || true)"
+if [ "$ACTUAL" != "$EXPECTED" ]; then
+  echo "expected message marker to be replaced: $EXPECTED" >&2
+  echo "actual message marker result: $ACTUAL" >&2
+  exit 1
+fi
