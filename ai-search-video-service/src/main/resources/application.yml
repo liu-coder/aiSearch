@@ -21,6 +21,7 @@ spring:
     table: flyway_schema_history_video
     locations: classpath:db/migration/video
     baseline-on-migrate: true
+    baseline-version: 0
   cloud:
     nacos:
       discovery:

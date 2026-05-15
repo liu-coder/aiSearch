@@ -1,0 +1,63 @@
+# AI Search 项目 · Cursor 上下文规则
+
+## 基础规则
+- 默认使用简体中文交流；代码、命令、路径、API、类名、函数名、报错和日志保留原文
+- Java 21 · Spring Boot 3.3.x · Spring Cloud 2023.x · Spring Cloud Alibaba · Maven 多模块
+- 生成代码按生产环境质量标准执行，避免占位逻辑、硬编码和只覆盖 happy path
+
+## 必读文档索引
+- 架构、模块边界、分层、在线/离线链路、配置、ES/Milvus：docs/ARCHITECTURE.md
+- API、DTO、Endpoint、枚举和校验规则：docs/API_SCHEMA.md
+- MySQL 表结构快照：docs/DATABASE_SCHEMA.sql
+- 工具类、工具方法和基础设施复用规则：docs/UTILS.md
+- 项目总体说明、启动和联调流程：docs/README.md
+
+## 硬性编码规则
+- API 层只做 HTTP 路由、参数校验、响应包装，业务逻辑委托 application 层
+- application/domain 层不得直接依赖具体外部客户端实现
+- ai-search-common 不得依赖任何具体服务模块
+- 对外 REST 响应使用 ApiResponse<T>
+- 新增 API 请求体必须使用 @Valid，DTO 使用 Jakarta Validation 表达边界
+- 新增模块必须登记到根 pom.xml 的 <modules>，包名遵循 com.aisearch.<bounded-context>
+
+## Schema 与文档同步
+- 数据库真实演进只新增 Flyway migration，禁止修改已发布迁移
+- 修改数据库 schema 时同步更新 docs/DATABASE_SCHEMA.sql、JPA 实体、Repository、API/调试视图和测试
+- 修改 API/DTO/枚举时同步更新 docs/API_SCHEMA.md
+- 修改架构、模块边界、配置或 ES/Milvus 字段时同步更新 docs/ARCHITECTURE.md
+- 修改工具能力时同步更新 docs/UTILS.md
+
+## 复用优先
+- 新增解析、规范化、字段映射、媒体处理、模型调用、限流、重试、鉴权、trace 或错误响应逻辑前，先查看 docs/UTILS.md
+- 优先复用 SearchDocumentMapper、TimedTextAligner、MediaProcessingStrategy、ModelGatewayClient、TraceIdFilter、GlobalExceptionHandler、ApiKeyAuthFilter 等已有能力
+- worker 模型响应缓存统一走 ModelResponseCache；多实例生产优先使用 RedisModelResponseCache
+- 搜索响应缓存统一走 SearchResponseCache；生产启用 Redis 前必须设置合理 TTL 和 key 前缀
+- 查询理解模型增强优先输出 JSON 对象，必须保留规则解析兜底和 key=value 兼容
+- worker 阶段任务观测优先使用 ai_search_worker_stage_task_total / ai_search_worker_stage_task_duration
+- AI 钉钉告警公共配置优先放入 Nacos ai-search-common.yaml，钉钉 token 使用 dingtalk_access_token 或 DINGTALK_ACCESS_TOKEN 环境变量注入，告警链路保持异步和失败隔离
+- 工作流调试、重跑和索引维护接口上线时必须配置 ai-search.security.api-key 与 ai-search.security.admin-role
+- 不要新增大而全 Utils 类；优先使用职责明确的小工具类、领域服务或 infrastructure 客户端
+
+## 安全与验证
+- DashScope、MinIO、API Key 等密钥只能来自环境变量或外部配置，不能写入仓库
+- DASHSCOPE_API_KEY 用于 model-service 的视频理解、文本分析、ASR、OCR、Caption、rerank、多模态 embedding 以及默认 AI 告警分析；DEEPSEEK_API_KEY 可用于代码 review、CI 分析、提交信息相关工具，也可作为 AI 告警分析的 DeepSeek provider 密钥
+- 本地开发默认使用 deterministic 模型能力，保证测试稳定
+- 修改 schema、索引字段、状态机、召回融合、模型调用、鉴权或上传链路时必须补充或更新测试
+- 首选验证命令：mvn test
+- 只改单模块时可运行：mvn -pl <module> test
+
+## 本地部署
+- 中间件统一从 E:\workspace\docker\docker-compose.yml 启动：docker compose --progress plain -f E:\workspace\docker\docker-compose.yml up -d
+- 服务端口：gateway 18080，search 18081，video 18082，worker 18083，model 18084
+- 中间件端口：MySQL 3306，Redis 6379，MinIO 9000/9001，RocketMQ namesrv 9876，Milvus 19530，Nacos 8848，Prometheus 9090，Grafana 3000
+- 本地默认账号：MySQL root/root，Redis password redis，MinIO minioadmin/minioadmin，Grafana admin/admin
+- 使用本地 Redis 时必须配置 spring.data.redis.password=redis
+- FFmpeg 本地开发由 E:\workspace\docker 的 ffmpeg-tools 容器提供；worker 默认使用 E:\workspace\docker\bin\ffmpeg-docker.cmd 和 E:\workspace\docker\bin\ffprobe-docker.cmd，工作目录保持在 E:\workspace\docker\data\ai-search-worker
+- 多服务共用 ai_search schema 且使用独立 Flyway history 表时，baseline-on-migrate: true 必须搭配 baseline-version: 0
+- Elasticsearch 镜像不可用时，可临时用 AI_SEARCH_SEARCH_ELASTICSEARCH_ENABLED=false 和 AI_SEARCH_WORKER_INITIALIZE_INDEX_ON_STARTUP=false 启动，但完整 ES 文本召回和索引链路需要恢复 Elasticsearch
+- E:\workspace\docker 的 MinIO healthcheck 使用 mc ready local；RocketMQ namesrv healthcheck 使用容器内完整 mqadmin 路径
+
+## Git 提交
+- 提交模板：.gitmessage，占位符 __AI_COMMIT_MESSAGE__
+- Husky hook 位于 .husky
+- 保留占位符时才自动生成提交信息，不覆盖用户手写信息

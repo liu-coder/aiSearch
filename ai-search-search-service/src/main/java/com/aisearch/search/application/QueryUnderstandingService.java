@@ -6,6 +6,8 @@ import com.aisearch.common.search.SearchRequest;
 import com.aisearch.search.domain.QueryIntent;
 import com.aisearch.search.domain.SearchIntent;
 import com.aisearch.search.infrastructure.ModelEmbeddingClient;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,13 +25,20 @@ public class QueryUnderstandingService {
     private static final Pattern DATE_RANGE_PATTERN = Pattern.compile("(\\d{4}-\\d{2}-\\d{2})\\s*(?:到|至|-|~)\\s*(\\d{4}-\\d{2}-\\d{2})");
     private static final Pattern YEAR_PATTERN = Pattern.compile("(20\\d{2})年?");
     private final ModelEmbeddingClient modelClient;
+    private final ObjectMapper objectMapper;
 
     QueryUnderstandingService() {
         this.modelClient = null;
+        this.objectMapper = new ObjectMapper();
     }
 
-    public QueryUnderstandingService(ModelEmbeddingClient modelClient) {
+    QueryUnderstandingService(ModelEmbeddingClient modelClient) {
+        this(modelClient, new ObjectMapper());
+    }
+
+    public QueryUnderstandingService(ModelEmbeddingClient modelClient, ObjectMapper objectMapper) {
         this.modelClient = modelClient;
+        this.objectMapper = objectMapper;
     }
 
     public QueryIntent understand(SearchRequest request) {
@@ -62,7 +71,7 @@ public class QueryUnderstandingService {
                 keywords,
                 modelUnderstanding.filters(),
                 recallSources,
-                sourceWeights(type, recallSources));
+                sourceWeights(type, recallSources, modelUnderstanding.sourceWeights()));
     }
 
     private List<String> tokenize(String text) {
@@ -159,7 +168,7 @@ public class QueryUnderstandingService {
         return semantic.isEmpty() ? text : semantic;
     }
 
-    private Map<RecallSource, Double> sourceWeights(QueryType type, List<RecallSource> sources) {
+    private Map<RecallSource, Double> sourceWeights(QueryType type, List<RecallSource> sources, Map<RecallSource, Double> modelWeights) {
         Map<RecallSource, Double> weights = new LinkedHashMap<>();
         for (RecallSource source : sources) {
             double weight = switch (source) {
@@ -170,28 +179,55 @@ public class QueryUnderstandingService {
             };
             weights.put(source, weight);
         }
+        for (Map.Entry<RecallSource, Double> entry : modelWeights.entrySet()) {
+            if (sources.contains(entry.getKey()) && entry.getValue() != null && entry.getValue() > 0) {
+                weights.put(entry.getKey(), Math.min(3.0, entry.getValue()));
+            }
+        }
         return weights;
     }
 
     private ModelUnderstanding modelUnderstanding(String rawText, String semanticQuery, Map<String, String> ruleFilters) {
         if (modelClient == null || !StringUtils.hasText(rawText)) {
-            return new ModelUnderstanding(null, semanticQuery, ruleFilters);
+            return new ModelUnderstanding(null, semanticQuery, ruleFilters, Map.of());
         }
         try {
             String response = modelClient.analyze("QUERY_UNDERSTANDING\n" + rawText, List.of(
-                    "请输出 rewrite=查询改写",
-                    "可选输出 intent=SEMANTIC_VIDEO_SEARCH|EXACT_ENTITY_SEARCH|MIXED_EVIDENCE_SEARCH",
-                    "可选输出 person=人物 scene=场景 startDate=YYYY-MM-DD endDate=YYYY-MM-DD"));
+                    "请只输出 JSON 对象，不要输出 Markdown。",
+                    "字段：rewrite、intent、person、scene、startDate、endDate、sourceWeights。",
+                    "intent 可选 SEMANTIC_VIDEO_SEARCH、EXACT_ENTITY_SEARCH、MIXED_EVIDENCE_SEARCH。"));
             return parseModelUnderstanding(response, semanticQuery, ruleFilters);
         } catch (RuntimeException ex) {
-            return new ModelUnderstanding(null, semanticQuery, ruleFilters);
+            return new ModelUnderstanding(null, semanticQuery, ruleFilters, Map.of());
         }
     }
 
     private ModelUnderstanding parseModelUnderstanding(String response, String fallbackSemanticQuery, Map<String, String> ruleFilters) {
+        Map<String, Object> json = parseJsonObject(response);
+        if (!json.isEmpty()) {
+            return parseJsonUnderstanding(json, fallbackSemanticQuery, ruleFilters);
+        }
+        return parseLineUnderstanding(response, fallbackSemanticQuery, ruleFilters);
+    }
+
+    private ModelUnderstanding parseJsonUnderstanding(Map<String, Object> json, String fallbackSemanticQuery, Map<String, String> ruleFilters) {
+        Map<String, String> filters = new LinkedHashMap<>(ruleFilters);
+        String rewritten = stringValue(json.get("rewrite"), fallbackSemanticQuery);
+        SearchIntent modelIntent = searchIntent(json.get("intent"));
+        for (String key : List.of("person", "scene", "startDate", "endDate")) {
+            Object value = json.get(key);
+            if (value != null && StringUtils.hasText(value.toString())) {
+                filters.put(key, value.toString());
+            }
+        }
+        return new ModelUnderstanding(modelIntent, rewritten, filters, sourceWeights(json.get("sourceWeights")));
+    }
+
+    private ModelUnderstanding parseLineUnderstanding(String response, String fallbackSemanticQuery, Map<String, String> ruleFilters) {
         Map<String, String> filters = new LinkedHashMap<>(ruleFilters);
         String rewritten = fallbackSemanticQuery;
         SearchIntent modelIntent = null;
+        Map<RecallSource, Double> weights = new LinkedHashMap<>();
         if (response != null) {
             for (String line : response.split("\\R")) {
                 int split = line.indexOf('=');
@@ -206,19 +242,73 @@ public class QueryUnderstandingService {
                 if ("rewrite".equalsIgnoreCase(key)) {
                     rewritten = value;
                 } else if ("intent".equalsIgnoreCase(key)) {
-                    try {
-                        modelIntent = SearchIntent.valueOf(value);
-                    } catch (IllegalArgumentException ignored) {
-                        modelIntent = null;
-                    }
+                    modelIntent = searchIntent(value);
                 } else if (List.of("person", "scene", "startDate", "endDate").contains(key)) {
                     filters.put(key, value);
+                } else if (key.startsWith("weight.")) {
+                    RecallSource source = recallSource(key.substring("weight.".length()));
+                    if (source != null) {
+                        weights.put(source, Double.parseDouble(value));
+                    }
                 }
             }
         }
-        return new ModelUnderstanding(modelIntent, rewritten, filters);
+        return new ModelUnderstanding(modelIntent, rewritten, filters, weights);
     }
 
-    private record ModelUnderstanding(SearchIntent intent, String semanticQuery, Map<String, String> filters) {
+    private Map<String, Object> parseJsonObject(String response) {
+        if (!StringUtils.hasText(response)) {
+            return Map.of();
+        }
+        String trimmed = response.trim();
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(trimmed, new TypeReference<>() {
+            });
+        } catch (Exception ex) {
+            return Map.of();
+        }
+    }
+
+    private Map<RecallSource, Double> sourceWeights(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<RecallSource, Double> weights = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            RecallSource source = recallSource(entry.getKey() == null ? "" : entry.getKey().toString());
+            if (source != null && entry.getValue() instanceof Number number) {
+                weights.put(source, number.doubleValue());
+            }
+        }
+        return weights;
+    }
+
+    private SearchIntent searchIntent(Object value) {
+        if (value == null || !StringUtils.hasText(value.toString())) {
+            return null;
+        }
+        try {
+            return SearchIntent.valueOf(value.toString());
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private RecallSource recallSource(String value) {
+        try {
+            return RecallSource.valueOf(value);
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private String stringValue(Object value, String fallback) {
+        return value == null || !StringUtils.hasText(value.toString()) ? fallback : value.toString();
+    }
+
+    private record ModelUnderstanding(SearchIntent intent, String semanticQuery, Map<String, String> filters, Map<RecallSource, Double> sourceWeights) {
     }
 }

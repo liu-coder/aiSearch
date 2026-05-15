@@ -43,7 +43,7 @@ public class DashScopeModelClient {
         Map<String, Object> submit = restClient.post()
                 .uri(properties.getDashscope().getAsrSubmitEndpoint())
                 .headers(headers -> {
-                    headers.setBearerAuth(requiredApiKey());
+                    headers.setBearerAuth(requiredDashScopeApiKey());
                     headers.add("X-DashScope-Async", "enable");
                 })
                 .body(Map.of(
@@ -63,7 +63,7 @@ public class DashScopeModelClient {
         for (int i = 0; i < 60; i++) {
             Map<String, Object> response = restClient.get()
                     .uri(properties.getDashscope().getTaskEndpoint(), taskId)
-                    .headers(headers -> headers.setBearerAuth(requiredApiKey()))
+                    .headers(headers -> headers.setBearerAuth(requiredDashScopeApiKey()))
                     .retrieve()
                     .body(Map.class);
             Map<String, Object> output = (Map<String, Object>) response.getOrDefault("output", Map.of());
@@ -99,7 +99,7 @@ public class DashScopeModelClient {
     public List<RerankResult> rerank(String query, List<String> documents, int topN) {
         Map<String, Object> response = restClient.post()
                 .uri(properties.getDashscope().getRerankEndpoint())
-                .headers(headers -> headers.setBearerAuth(requiredApiKey()))
+                .headers(headers -> headers.setBearerAuth(requiredDashScopeApiKey()))
                 .body(Map.of(
                         "model", properties.getDashscope().getRerankModel(),
                         "input", Map.of("query", query, "documents", documents),
@@ -122,7 +122,7 @@ public class DashScopeModelClient {
     private String visionChat(String model, String imageUrl, String prompt) {
         Map<String, Object> response = restClient.post()
                 .uri(properties.getDashscope().getChatEndpoint())
-                .headers(headers -> headers.setBearerAuth(requiredApiKey()))
+                .headers(headers -> headers.setBearerAuth(requiredDashScopeApiKey()))
                 .body(Map.of(
                         "model", model,
                         "messages", List.of(Map.of(
@@ -138,7 +138,7 @@ public class DashScopeModelClient {
     private String textChat(String model, String prompt) {
         Map<String, Object> response = restClient.post()
                 .uri(properties.getDashscope().getChatEndpoint())
-                .headers(headers -> headers.setBearerAuth(requiredApiKey()))
+                .headers(headers -> headers.setBearerAuth(requiredDashScopeApiKey()))
                 .body(Map.of(
                         "model", model,
                         "messages", List.of(Map.of("role", "user", "content", prompt))))
@@ -258,7 +258,7 @@ public class DashScopeModelClient {
         return null;
     }
 
-    private String requiredApiKey() {
+    private String requiredDashScopeApiKey() {
         String apiKey = properties.getDashscope().getApiKey();
         if (apiKey == null || apiKey.isBlank()) {
             throw new IllegalStateException("未配置 ai-search.models.dashscope.api-key");

@@ -4,6 +4,8 @@ import com.aisearch.worker.domain.StageTaskStatus;
 import com.aisearch.worker.domain.VideoProcessingStageTaskEntity;
 import com.aisearch.worker.infrastructure.config.WorkerPipelineProperties;
 import com.aisearch.worker.infrastructure.persistence.VideoProcessingStageTaskRepository;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.time.Instant;
 import java.util.EnumMap;
 import java.util.List;
@@ -21,6 +23,7 @@ public class VideoProcessingTaskExecutor {
     private final WorkerPipelineProperties properties;
     private final FailureClassifier failureClassifier;
     private final VideoAssetStatusService videoAssetStatusService;
+    private final MeterRegistry meterRegistry;
     private final Map<com.aisearch.common.workflow.WorkflowStage, StageProcessor> processors;
 
     public VideoProcessingTaskExecutor(
@@ -28,11 +31,13 @@ public class VideoProcessingTaskExecutor {
             WorkerPipelineProperties properties,
             FailureClassifier failureClassifier,
             VideoAssetStatusService videoAssetStatusService,
-            List<StageProcessor> processors) {
+            List<StageProcessor> processors,
+            MeterRegistry meterRegistry) {
         this.repository = repository;
         this.properties = properties;
         this.failureClassifier = failureClassifier;
         this.videoAssetStatusService = videoAssetStatusService;
+        this.meterRegistry = meterRegistry;
         this.processors = new EnumMap<>(com.aisearch.common.workflow.WorkflowStage.class);
         for (StageProcessor processor : processors) {
             this.processors.put(processor.stage(), processor);
@@ -94,11 +99,14 @@ public class VideoProcessingTaskExecutor {
         StageProcessor processor = processors.get(task.getStage());
         if (processor == null) {
             task.markFailed("未配置阶段处理器: " + task.getStage());
+            recordTaskResult(task, "failed", com.aisearch.worker.domain.StageFailureType.CONFIGURATION);
             return;
         }
+        Timer.Sample sample = Timer.start(meterRegistry);
         try {
             processor.process(task);
             task.markSucceeded();
+            recordTaskResult(task, "succeeded", null);
             if (repository.allStagesSucceeded(task.getEventId())) {
                 videoAssetStatusService.markReady(task.getVideoId());
             }
@@ -106,10 +114,24 @@ public class VideoProcessingTaskExecutor {
             StageProcessingException classified = failureClassifier.classify(ex);
             if (!classified.retryable() || task.getAttempts() >= properties.getMaxAttempts()) {
                 task.markFailed(classified.failureType(), classified.getMessage());
+                recordTaskResult(task, "failed", classified.failureType());
                 videoAssetStatusService.markFailed(task.getVideoId());
             } else {
                 task.markPendingForRetry(classified.failureType(), classified.getMessage());
+                recordTaskResult(task, "retry", classified.failureType());
             }
+        } finally {
+            sample.stop(meterRegistry.timer(
+                    "ai_search_worker_stage_task_duration",
+                    "stage", task.getStage().name()));
         }
+    }
+
+    private void recordTaskResult(VideoProcessingStageTaskEntity task, String result, com.aisearch.worker.domain.StageFailureType failureType) {
+        meterRegistry.counter(
+                "ai_search_worker_stage_task_total",
+                "stage", task.getStage().name(),
+                "result", result,
+                "failureType", failureType == null ? "none" : failureType.name()).increment();
     }
 }

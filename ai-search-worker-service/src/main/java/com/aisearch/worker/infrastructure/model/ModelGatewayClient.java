@@ -5,9 +5,9 @@ import com.aisearch.worker.infrastructure.config.WorkerPipelineProperties;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
@@ -26,18 +26,20 @@ public class ModelGatewayClient {
     private final int maxAttempts;
     private final long initialBackoffMs;
     private final AtomicLong nextAllowedCallAtMs = new AtomicLong(0);
-    private final int cacheMaxEntries;
-    private final Map<String, Object> cache;
+    private final ModelResponseCache responseCache;
 
-    public ModelGatewayClient(RestClient.Builder builder, WorkerPipelineProperties properties, MeterRegistry meterRegistry) {
+    public ModelGatewayClient(
+            RestClient.Builder builder,
+            WorkerPipelineProperties properties,
+            MeterRegistry meterRegistry,
+            ModelResponseCache responseCache) {
         this.restClient = builder.baseUrl(properties.getModel().getEndpoint()).build();
         this.meterRegistry = meterRegistry;
         this.modelCallLimiter = new Semaphore(Math.max(1, properties.getModel().getMaxConcurrentCalls()));
         this.qpsLimit = Math.max(0, properties.getModel().getQpsLimit());
         this.maxAttempts = Math.max(1, properties.getModel().getMaxAttempts());
         this.initialBackoffMs = Math.max(0, properties.getModel().getInitialBackoffMs());
-        this.cacheMaxEntries = Math.max(0, properties.getModel().getCacheMaxEntries());
-        this.cache = new LinkedHashMap<>(16, 0.75f, true);
+        this.responseCache = responseCache;
     }
 
     /**
@@ -115,23 +117,12 @@ public class ModelGatewayClient {
 
     private Object cachedResponseData(String path, Object body) {
         String key = path + "|" + body;
-        if (cacheMaxEntries > 0) {
-            synchronized (cache) {
-                if (cache.containsKey(key)) {
-                    return cache.get(key);
-                }
-            }
+        Optional<Object> cached = responseCache.get(key);
+        if (cached.isPresent()) {
+            return cached.get();
         }
         Object data = limitedResponseData(path, body);
-        if (cacheMaxEntries > 0) {
-            synchronized (cache) {
-                cache.put(key, data);
-                while (cache.size() > cacheMaxEntries) {
-                    String eldestKey = cache.keySet().iterator().next();
-                    cache.remove(eldestKey);
-                }
-            }
-        }
+        responseCache.put(key, data);
         return data;
     }
 

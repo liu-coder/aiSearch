@@ -39,46 +39,48 @@ public class WorkflowController {
     }
 
     @GetMapping("/video-indexing/videos/{videoId}")
-    public ApiResponse<VideoProcessingStatusResponse> videoStatus(@PathVariable String videoId) {
+    public ApiResponse<VideoProcessingStatusResponse> videoStatus(@PathVariable("videoId") String videoId) {
         return ApiResponse.ok(statusService.status(videoId));
     }
 
     @GetMapping("/video-indexing/videos/{videoId}/slice-plan")
-    public ApiResponse<WorkflowDebugService.VideoSlicePlan> slicePlan(@PathVariable String videoId) {
+    public ApiResponse<WorkflowDebugService.VideoSlicePlan> slicePlan(@PathVariable("videoId") String videoId) {
         return ApiResponse.ok(debugService.slicePlan(videoId));
     }
 
     @GetMapping("/video-indexing/videos/{videoId}/artifacts")
-    public ApiResponse<Map<String, String>> stageArtifacts(@PathVariable String videoId) {
+    public ApiResponse<Map<String, String>> stageArtifacts(@PathVariable("videoId") String videoId) {
         return ApiResponse.ok(debugService.stageArtifacts(videoId));
     }
 
     @GetMapping("/video-indexing/videos/{videoId}/segments/artifacts")
-    public ApiResponse<Map<String, Map<String, String>>> segmentArtifacts(@PathVariable String videoId) {
+    public ApiResponse<Map<String, Map<String, String>>> segmentArtifacts(@PathVariable("videoId") String videoId) {
         return ApiResponse.ok(debugService.segmentArtifacts(videoId));
     }
 
     @GetMapping("/video-indexing/videos/{videoId}/segments/{segmentId}")
     public ApiResponse<SegmentArtifactService.SegmentEvidence> segmentEvidence(
-            @PathVariable String videoId,
-            @PathVariable String segmentId) {
+            @PathVariable("videoId") String videoId,
+            @PathVariable("segmentId") String segmentId) {
         return ApiResponse.ok(debugService.segmentEvidence(videoId, segmentId));
     }
 
     @PostMapping("/video-indexing/videos/{videoId}/stages/{stage}/rerun")
-    public ApiResponse<Void> rerunStage(@PathVariable String videoId, @PathVariable WorkflowStage stage) {
+    public ApiResponse<Void> rerunStage(
+            @PathVariable("videoId") String videoId,
+            @PathVariable("stage") WorkflowStage stage) {
         debugService.rerunStage(videoId, stage);
         return ApiResponse.ok(null);
     }
 
     @PostMapping("/video-indexing/videos/{videoId}/rebuild-index")
-    public ApiResponse<Void> rebuildIndex(@PathVariable String videoId) {
+    public ApiResponse<Void> rebuildIndex(@PathVariable("videoId") String videoId) {
         debugService.rebuildIndex(videoId);
         return ApiResponse.ok(null);
     }
 
     @PostMapping("/video-indexing/videos/{videoId}/delete-index")
-    public ApiResponse<Void> deleteIndex(@PathVariable String videoId) {
+    public ApiResponse<Void> deleteIndex(@PathVariable("videoId") String videoId) {
         debugService.deleteIndex(videoId);
         return ApiResponse.ok(null);
     }

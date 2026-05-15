@@ -4,6 +4,15 @@ server:
 spring:
   application:
     name: ai-search-search-service
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: redis
+  redis:
+    host: localhost
+    port: 6379
+    password: redis
   cloud:
     nacos:
       discovery:
@@ -44,6 +53,10 @@ ai-search:
         - endTimeMs
     model:
       endpoint: http://localhost:18084
+    cache:
+      enabled: false
+      ttl-seconds: 60
+      key-prefix: "ai-search:search:"
 
 management:
   endpoints:

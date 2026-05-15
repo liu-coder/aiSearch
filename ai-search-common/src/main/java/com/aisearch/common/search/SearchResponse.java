@@ -15,4 +15,14 @@ public record SearchResponse(
         long latencyMs,
         Instant generatedAt
 ) {
+    public SearchResponse withRequestMetadata(String newRequestId, long newLatencyMs, Instant newGeneratedAt) {
+        return new SearchResponse(
+                newRequestId,
+                queryType,
+                searchPlan,
+                results,
+                analysis,
+                newLatencyMs,
+                newGeneratedAt);
+    }
 }

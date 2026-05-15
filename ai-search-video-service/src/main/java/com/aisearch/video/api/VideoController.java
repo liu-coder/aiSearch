@@ -31,7 +31,7 @@ public class VideoController {
 
     @PostMapping("/{videoId}/complete")
     public ApiResponse<VideoAssetResponse> completeUpload(
-            @PathVariable String videoId,
+            @PathVariable("videoId") String videoId,
             @Valid @RequestBody CompleteUploadRequest request) {
         return ApiResponse.ok(videoUploadService.complete(videoId, request));
     }

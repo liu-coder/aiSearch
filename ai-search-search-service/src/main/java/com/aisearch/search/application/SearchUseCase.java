@@ -22,6 +22,7 @@ public class SearchUseCase {
     private final RerankService rerankService;
     private final EvidenceService evidenceService;
     private final LlmAnalysisService llmAnalysisService;
+    private final SearchResponseCache searchResponseCache;
 
     public SearchUseCase(
             QueryUnderstandingService queryUnderstandingService,
@@ -29,13 +30,15 @@ public class SearchUseCase {
             CandidateMergeService candidateMergeService,
             RerankService rerankService,
             EvidenceService evidenceService,
-            LlmAnalysisService llmAnalysisService) {
+            LlmAnalysisService llmAnalysisService,
+            SearchResponseCache searchResponseCache) {
         this.queryUnderstandingService = queryUnderstandingService;
         this.recallOrchestrator = recallOrchestrator;
         this.candidateMergeService = candidateMergeService;
         this.rerankService = rerankService;
         this.evidenceService = evidenceService;
         this.llmAnalysisService = llmAnalysisService;
+        this.searchResponseCache = searchResponseCache;
     }
 
     public SearchResponse search(SearchRequest request) {
@@ -49,6 +52,15 @@ public class SearchUseCase {
          */
         long started = System.currentTimeMillis();
         String requestId = UUID.randomUUID().toString();
+        SearchResponse cached = searchResponseCache.get(request)
+                .map(response -> response.withRequestMetadata(
+                        requestId,
+                        System.currentTimeMillis() - started,
+                        Instant.now()))
+                .orElse(null);
+        if (cached != null) {
+            return cached;
+        }
         // 保持主流程显式编排，便于后续替换真实 ES、Milvus、Redis、LLM 适配器。
         QueryIntent intent = queryUnderstandingService.understand(request);
         List<CandidateSegment> recalled = recallOrchestrator.recall(intent, request.normalizedTopK() * 5);
@@ -58,7 +70,7 @@ public class SearchUseCase {
         DialecticalAnalysis analysis = request.needsAnalysis()
                 ? llmAnalysisService.analyze(intent, results)
                 : DialecticalAnalysis.skipped();
-        return new SearchResponse(
+        SearchResponse response = new SearchResponse(
                 requestId,
                 intent.queryType(),
                 intent.toSearchPlan(),
@@ -66,5 +78,7 @@ public class SearchUseCase {
                 analysis,
                 System.currentTimeMillis() - started,
                 Instant.now());
+        searchResponseCache.put(request, response);
+        return response;
     }
 }

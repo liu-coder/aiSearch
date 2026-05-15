@@ -34,7 +34,7 @@ public class ModelController {
     }
 
     @GetMapping("/embedding")
-    public ApiResponse<List<Double>> embedding(@RequestParam String text) {
+    public ApiResponse<List<Double>> embedding(@RequestParam("text") String text) {
         return ApiResponse.ok(embeddingService.embedText(text));
     }
 

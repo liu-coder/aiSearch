@@ -1,0 +1,87 @@
+groups:
+  - name: ai-search-service
+    rules:
+      - alert: AiSearchApiErrorRateHigh
+        expr: |
+          sum(rate(http_server_requests_seconds_count{uri=~"/api/.*",status=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(http_server_requests_seconds_count{uri=~"/api/.*"}[5m])), 1) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI Search API 5xx error rate is high"
+          description: "More than 5% of API requests are returning 5xx over the last 10 minutes."
+
+      - alert: AiSearchApiLatencyP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(http_server_requests_seconds_bucket{uri=~"/api/.*"}[5m])) by (le, application, uri)
+          ) > 3
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI Search API p95 latency is high"
+          description: "API p95 latency has stayed above 3 seconds for 10 minutes."
+
+  - name: ai-search-worker
+    rules:
+      - alert: AiSearchWorkerStageFailures
+        expr: sum(increase(ai_search_worker_stage_task_total{result="failed"}[10m])) by (stage, failureType) > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "AI Search worker stage failure"
+          description: "Worker stage {{ $labels.stage }} failed with failure type {{ $labels.failureType }}."
+
+      - alert: AiSearchWorkerRetrySpike
+        expr: sum(increase(ai_search_worker_stage_task_total{result="retry"}[10m])) by (stage, failureType) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI Search worker retry spike"
+          description: "Worker stage {{ $labels.stage }} retried more than 5 times in 10 minutes."
+
+      - alert: AiSearchWorkerStageP95Slow
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(ai_search_worker_stage_task_duration_seconds_bucket[10m])) by (le, stage)
+          ) > 120
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI Search worker stage p95 is slow"
+          description: "Worker stage {{ $labels.stage }} p95 duration has stayed above 120 seconds."
+
+  - name: ai-search-model
+    rules:
+      - alert: AiSearchModelCallFailureRateHigh
+        expr: |
+          sum(rate(http_client_requests_seconds_count{uri=~".*/api/models/.*",status=~"5..|IO_ERROR"}[5m]))
+          /
+          clamp_min(sum(rate(http_client_requests_seconds_count{uri=~".*/api/models/.*"}[5m])), 1) > 0.03
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI Search model call failure rate is high"
+          description: "More than 3% of model calls failed over the last 10 minutes."
+
+      - alert: AiSearchModelCallP95Slow
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(http_client_requests_seconds_bucket{uri=~".*/api/models/.*"}[5m])) by (le, application, uri)
+          ) > 10
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI Search model call p95 is slow"
+          description: "Model call p95 latency has stayed above 10 seconds for 10 minutes."

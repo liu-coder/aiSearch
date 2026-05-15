@@ -109,19 +109,46 @@ VideoUploadService
 基础中间件复用本机 Docker Compose：
 
 ```powershell
-docker compose -f E:\workspace\docker\docker-compose.yml up -d
+docker compose --progress plain -f E:\workspace\docker\docker-compose.yml up -d
 ```
 
 默认连接：
 
-| 组件 | 地址 |
-| --- | --- |
-| Nacos | `localhost:8848` |
-| Redis | `localhost:6379` |
-| MinIO | `localhost:9000` |
-| Milvus | `localhost:19530` |
-| Elasticsearch | `localhost:9200` |
-| RocketMQ | `localhost:9876` |
+| 组件 | 地址 | 本地默认账号 |
+| --- | --- | --- |
+| Nacos | `localhost:8848` | 无 |
+| MySQL | `localhost:3306` | `root/root`，数据库 `ai_search` |
+| Redis | `localhost:6379` | password `redis` |
+| MinIO API | `localhost:9000` | `minioadmin/minioadmin` |
+| MinIO Console | `localhost:9001` | `minioadmin/minioadmin` |
+| Milvus | `localhost:19530` | 无 |
+| Attu | `localhost:8000` | 无 |
+| Elasticsearch | `localhost:9200` | 本地开发关闭安全认证 |
+| RocketMQ namesrv | `localhost:9876` | 无 |
+| RocketMQ broker | `localhost:10909/10911/10912` | 无 |
+| Prometheus | `localhost:9090` | 无 |
+| Grafana | `localhost:3000` | `admin/admin` |
+| Sentinel Dashboard | `localhost:8858` | 无 |
+| OpenTelemetry Collector | `localhost:4317/4318` | 无 |
+| FFmpeg Tools | Docker service `ffmpeg-tools` | 通过 `E:\workspace\docker\bin\ffmpeg-docker.cmd` / `ffprobe-docker.cmd` 调用 |
+
+本机 Docker Compose 注意事项：
+
+- `E:\workspace\docker` 中 MinIO 镜像默认没有 `curl`，健康检查使用 `mc ready local`。
+- RocketMQ namesrv 健康检查使用容器内完整路径 `/home/rocketmq/rocketmq-5.3.2/bin/mqadmin`。
+- Redis 开启密码 `redis`，本项目本地配置需包含 `spring.data.redis.password=redis`。
+- 多服务共用 `ai_search` schema，并通过不同 `flyway_schema_history_*` 表管理迁移；`baseline-on-migrate: true` 必须搭配 `baseline-version: 0`，避免其他服务已建表时跳过当前服务 `V1`。
+- 如果 Elasticsearch 镜像因 `docker.elastic.co` 网络问题无法拉取，可临时关闭 ES 相关启动路径，但完整关键词召回和 ES 索引链路需要恢复 Elasticsearch。
+- FFmpeg 由 `ffmpeg-tools` 容器提供，本地 worker 默认通过 `E:\workspace\docker\bin\ffmpeg-docker.cmd` 和 `E:\workspace\docker\bin\ffprobe-docker.cmd` 调用；视频处理工作目录需位于 `E:\workspace\docker\data\ai-search-worker`，由 compose 挂载到容器内 `/work`。
+
+临时无 Elasticsearch 启动示例：
+
+```powershell
+$env:AI_SEARCH_SEARCH_ELASTICSEARCH_ENABLED = "false"
+$env:AI_SEARCH_WORKER_INITIALIZE_INDEX_ON_STARTUP = "false"
+mvn -pl ai-search-search-service spring-boot:run
+mvn -pl ai-search-worker-service spring-boot:run
+```
 
 构建与测试：
 
@@ -168,22 +195,153 @@ ai-search:
       api-key: ${DASHSCOPE_API_KEY:}
 ```
 
+其中 `DASHSCOPE_API_KEY` 用于 model-service 的文本分析、ASR、OCR、Caption、rerank 和多模态 embedding 等视频理解能力。`DEEPSEEK_API_KEY` 仅用于代码 review、CI 分析和提交信息生成相关工具，不参与视频分析链路。
+
+AI 钉钉告警公共配置建议放入 Nacos `ai-search-common.yaml`，各服务已通过 `spring.config.import` 加载该公共配置。示例文件位于 `deploy/nacos/ai-search-common.yaml`：
+
+```yaml
+ai-search:
+  alert:
+    enabled: true
+    analyzer-provider: dashscope
+    analyzer-api-key: ${DASHSCOPE_API_KEY:${DEEPSEEK_API_KEY:}}
+    analyzer-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+    analyzer-model: qwen-plus
+    dingtalk-access-token: ${dingtalk_access_token:${DINGTALK_ACCESS_TOKEN:}}
+    dingtalk-secret: ${DINGTALK_SECRET:${dingtalk_secret:}}
+```
+
+`dingtalk-access-token` 只保存钉钉机器人 URL 中的 `access_token` 值，不保存完整 webhook；本机已配置 `dingtalk_access_token` 时可直接被占位符读取。
+
+### AI 钉钉告警配置与验证流程
+
+1. 在 Nacos 创建或更新公共配置 `ai-search-common.yaml`，可直接使用仓库示例：
+
+```powershell
+$content = Get-Content -Raw deploy\nacos\ai-search-common.yaml
+Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:8848/nacos/v1/cs/configs" `
+  -Body @{ dataId="ai-search-common.yaml"; group="DEFAULT_GROUP"; content=$content; type="yaml" }
+```
+
+2. 确认本机或服务运行环境已配置钉钉 token。变量名优先使用本机小写变量 `dingtalk_access_token`，兼容 `DINGTALK_ACCESS_TOKEN`。如需真实 AI 根因分析，默认配置 `DASHSCOPE_API_KEY` 即可复用阿里 DashScope；也可以切换为 DeepSeek：
+
+```yaml
+ai-search:
+  alert:
+    analyzer-provider: deepseek
+    analyzer-api-key: ${DEEPSEEK_API_KEY:}
+    analyzer-endpoint: https://api.deepseek.com/chat/completions
+    analyzer-model: deepseek-chat
+```
+
+未配置分析 API Key 时告警仍会推送，但使用降级分析。
+
+3. 单模块本地启动前，如果改过 `ai-search-common`，先安装 common 到本地 Maven 仓库，避免 `spring-boot:run` 读取旧快照包：
+
+```powershell
+mvn -pl ai-search-common install -DskipTests
+mvn -pl ai-search-search-service spring-boot:run
+```
+
+4. 验证公共配置是否生效。服务启动日志应出现：
+
+```text
+[Nacos Config] Load config[dataId=ai-search-common.yaml, group=DEFAULT_GROUP] success
+```
+
+5. 验证告警链路。可临时停止 `model-service` 后调用 search-service，让模型 embedding 调用产生一次 `502`：
+
+```powershell
+$body = @{ text="触发AI告警测试"; topK=1; withAnalysis=$false } | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:18081/api/search" `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+预期结果：
+
+- HTTP 响应为 `502`，消息为“下游服务调用失败”。
+- Redis 出现 `ai-search:alert:dedupe:*` 和 `ai-search:alert:rate:<service-name>` key。
+- 服务日志出现 `[AiAlert] 钉钉推送完成 service=<service-name> severity=P1`。
+- 钉钉群收到 Markdown 告警卡片。
+
+如果服务日志出现 `errcode=300005, errmsg=token is not exist`，说明钉钉平台未识别当前 token；重新复制自定义机器人 webhook 中 `access_token=` 后面的值，更新 `dingtalk_access_token`，再重新发布 Nacos 配置并重启服务。
+
+6. 验证完成后恢复被停止的服务：
+
+```powershell
+mvn -pl ai-search-model-service spring-boot:run
+Invoke-RestMethod http://localhost:18084/actuator/health
+```
+
+如果 model-service 健康检查出现 Redis `NOAUTH`，检查 `ai-search-common` 是否误引入了 Redis starter；公共告警组件只应依赖 `spring-data-redis` 类型，不应把 Redis 自动配置传递给不需要 Redis 的服务。
+
 搜索与 worker 生产配置重点：
 
 - `ai-search.search.elasticsearch.endpoint`
 - `ai-search.search.milvus.endpoint`
 - `ai-search.search.model.endpoint`
+- `ai-search.search.cache.enabled`
+- `ai-search.search.cache.ttl-seconds`
 - `ai-search.worker.model.max-concurrent-calls`
 - `ai-search.worker.model.qps-limit`
 - `ai-search.worker.model.max-attempts`
 - `ai-search.worker.model.initial-backoff-ms`
+- `ai-search.worker.model.cache-type`
 - `ai-search.worker.model.cache-max-entries`
+- `ai-search.worker.model.cache-ttl-seconds`
 - `ai-search.security.api-key`
+- `ai-search.security.admin-role`
 
 配置 `ai-search.security.api-key` 后，所有 `/api/**` 请求都需要携带：
 
 ```http
 X-AI-Search-Api-Key: <your-api-key>
+```
+
+调用工作流调试、重跑和索引维护接口时，还需要管理员角色：
+
+```http
+X-AI-Search-Roles: ADMIN
+```
+
+生产搜索可启用 Redis 响应缓存：
+
+```yaml
+ai-search:
+  search:
+    cache:
+      enabled: true
+      ttl-seconds: 60
+      key-prefix: ai-search:search:
+```
+
+多 worker 实例建议启用 Redis 模型缓存：
+
+```yaml
+ai-search:
+  worker:
+    model:
+      cache-type: redis
+      cache-ttl-seconds: 86400
+      cache-key-prefix: ai-search:model:
+```
+
+查询理解模型增强建议输出 JSON：
+
+```json
+{
+  "rewrite": "王工 车间 巡检异常",
+  "intent": "EXACT_ENTITY_SEARCH",
+  "person": "王工",
+  "scene": "车间",
+  "sourceWeights": {
+    "KEYWORD": 1.3,
+    "OCR": 1.2
+  }
+}
 ```
 
 ## API 示例
@@ -253,10 +411,19 @@ Content-Type: application/json
 前置条件：
 
 - Docker 基础环境已启动。
-- `DASHSCOPE_API_KEY` 已配置到 model-service 运行环境。
-- 本机可执行 `ffmpeg` 和 `ffprobe`，或通过 `ai-search.ffmpeg.command` / `ai-search.ffmpeg.ffprobe-command` 指向正确路径。
+- `DASHSCOPE_API_KEY` 已配置到 model-service 运行环境，用于文本分析、ASR、OCR、Caption、rerank 和多模态 embedding。
+- Docker 中 `ffmpeg-tools` 已启动，或本机可执行 `ffmpeg` 和 `ffprobe`；本地默认配置使用 Docker wrapper。
 - MinIO 临时访问 URL 可被 DashScope 访问；本地 `localhost` 不能公网访问时，需要配置可访问的对象网关地址。
 - 如启用 `ai-search.security.api-key`，请求需携带 `X-AI-Search-Api-Key`。
+
+可使用烟测脚本跑真实视频全链路：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/e2e-video-search-smoke.ps1 `
+  -VideoPath E:\videos\demo.mp4 `
+  -GatewayBaseUrl http://localhost:18080 `
+  -SearchText "视频内容"
+```
 
 通过标准：
 
@@ -414,12 +581,15 @@ git commit
 - Elasticsearch 与 Milvus REST 适配器。
 - 模型服务 deterministic/http/dashscope provider。
 - API Key 鉴权、`X-Trace-Id` 透传、基础指标。
+- Redis 搜索响应缓存。
+- Prometheus 告警规则模板。
+- 真实视频端到端烟测脚本。
 
 待继续完善：
 
 - 真实 FFmpeg 转码/抽帧处理器。
 - 真实 ASR、OCR、Caption、Embedding 阶段处理器。
-- Redis 搜索缓存和查询向量缓存。
+- 查询向量缓存。
 - Sentinel 限流规则。
 - OpenTelemetry 链路追踪。
 - 检索质量评测集。

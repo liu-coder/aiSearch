@@ -37,7 +37,7 @@ jobs:
 
       # ── 2. 设置 JDK ──────────────────────────────────────
       # 根据项目实际 JDK 版本修改 java-version（17 或 21）
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: "21"

@@ -11,6 +11,7 @@ public class SearchBackendProperties {
     private final Elasticsearch elasticsearch = new Elasticsearch();
     private final Milvus milvus = new Milvus();
     private final Model model = new Model();
+    private final Cache cache = new Cache();
 
     public Elasticsearch getElasticsearch() {
         return elasticsearch;
@@ -22,6 +23,10 @@ public class SearchBackendProperties {
 
     public Model getModel() {
         return model;
+    }
+
+    public Cache getCache() {
+        return cache;
     }
 
     public static class Elasticsearch {
@@ -138,6 +143,36 @@ public class SearchBackendProperties {
 
         public void setEndpoint(String endpoint) {
             this.endpoint = endpoint;
+        }
+    }
+
+    public static class Cache {
+        private boolean enabled = false;
+        private long ttlSeconds = 60;
+        private String keyPrefix = "ai-search:search:";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public long getTtlSeconds() {
+            return ttlSeconds;
+        }
+
+        public void setTtlSeconds(long ttlSeconds) {
+            this.ttlSeconds = ttlSeconds;
+        }
+
+        public String getKeyPrefix() {
+            return keyPrefix;
+        }
+
+        public void setKeyPrefix(String keyPrefix) {
+            this.keyPrefix = keyPrefix;
         }
     }
 }

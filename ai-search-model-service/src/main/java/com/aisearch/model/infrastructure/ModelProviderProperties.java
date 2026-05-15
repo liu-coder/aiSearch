@@ -194,4 +194,5 @@ public class ModelProviderProperties {
             this.rerankModel = rerankModel;
         }
     }
+
 }

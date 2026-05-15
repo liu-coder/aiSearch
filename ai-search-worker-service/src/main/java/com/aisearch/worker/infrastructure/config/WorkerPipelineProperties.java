@@ -84,7 +84,10 @@ public class WorkerPipelineProperties {
         private int qpsLimit = 8;
         private int maxAttempts = 3;
         private long initialBackoffMs = 200;
+        private String cacheType = "local";
         private int cacheMaxEntries = 1000;
+        private long cacheTtlSeconds = 86400;
+        private String cacheKeyPrefix = "ai-search:model:";
 
         public String getEndpoint() {
             return endpoint;
@@ -132,6 +135,30 @@ public class WorkerPipelineProperties {
 
         public void setCacheMaxEntries(int cacheMaxEntries) {
             this.cacheMaxEntries = cacheMaxEntries;
+        }
+
+        public String getCacheType() {
+            return cacheType;
+        }
+
+        public void setCacheType(String cacheType) {
+            this.cacheType = cacheType;
+        }
+
+        public long getCacheTtlSeconds() {
+            return cacheTtlSeconds;
+        }
+
+        public void setCacheTtlSeconds(long cacheTtlSeconds) {
+            this.cacheTtlSeconds = cacheTtlSeconds;
+        }
+
+        public String getCacheKeyPrefix() {
+            return cacheKeyPrefix;
+        }
+
+        public void setCacheKeyPrefix(String cacheKeyPrefix) {
+            this.cacheKeyPrefix = cacheKeyPrefix;
         }
     }
 

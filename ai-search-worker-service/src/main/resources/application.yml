@@ -4,6 +4,15 @@ server:
 spring:
   application:
     name: ai-search-worker-service
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: redis
+  redis:
+    host: localhost
+    port: 6379
+    password: redis
   datasource:
     url: jdbc:mysql://localhost:3306/ai_search?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: root
@@ -21,6 +30,7 @@ spring:
     table: flyway_schema_history_worker
     locations: classpath:db/migration/worker
     baseline-on-migrate: true
+    baseline-version: 0
   cloud:
     nacos:
       discovery:
@@ -64,7 +74,10 @@ ai-search:
       qps-limit: 8
       max-attempts: 3
       initial-backoff-ms: 200
+      cache-type: local
       cache-max-entries: 1000
+      cache-ttl-seconds: 86400
+      cache-key-prefix: "ai-search:model:"
     storage:
       endpoint: http://localhost:9000
       access-key: minioadmin
@@ -91,8 +104,8 @@ ai-search:
       min-content-segment-seconds: 8
       max-content-segment-seconds: 90
   ffmpeg:
-    command: ffmpeg
-    ffprobe-command: ffprobe
+    command: E:/workspace/docker/bin/ffmpeg-docker.cmd
+    ffprobe-command: E:/workspace/docker/bin/ffprobe-docker.cmd
   rocketmq:
     namesrv-addr: localhost:9876
     video-uploaded-topic: video.uploaded
