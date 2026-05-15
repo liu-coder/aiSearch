@@ -31,7 +31,9 @@ spring:
         import-check:
           enabled: false
   config:
-    import: optional:nacos:${spring.application.name}.yaml
+    import:
+      - optional:nacos:ai-search-common.yaml
+      - optional:nacos:${spring.application.name}.yaml
 
 rocketmq:
   name-server: localhost:9876

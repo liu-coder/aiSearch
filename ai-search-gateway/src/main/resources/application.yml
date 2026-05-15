@@ -32,7 +32,9 @@ spring:
           predicates:
             - Path=/api/models/**
   config:
-    import: optional:nacos:${spring.application.name}.yaml
+    import:
+      - optional:nacos:ai-search-common.yaml
+      - optional:nacos:${spring.application.name}.yaml
 
 management:
   endpoints:

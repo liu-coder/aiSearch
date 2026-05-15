@@ -1,0 +1,19 @@
+ai-search:
+  alert:
+    enabled: true
+    analyzer-provider: dashscope
+    analyzer-api-key: ${DASHSCOPE_API_KEY:${DEEPSEEK_API_KEY:}}
+    analyzer-endpoint: https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
+    analyzer-model: qwen-plus
+    dingtalk-endpoint: https://oapi.dingtalk.com/robot/send
+    dingtalk-access-token: ${dingtalk_access_token:${DINGTALK_ACCESS_TOKEN:}}
+    dingtalk-secret: ${DINGTALK_SECRET:${dingtalk_secret:}}
+    deduplicate-window-seconds: 300
+    max-alerts-per-minute: 5
+    analyzer-timeout-seconds: 10
+    notify-timeout-seconds: 5
+    ignored-exceptions:
+      - org.springframework.web.bind.MethodArgumentNotValidException
+      - jakarta.validation.ConstraintViolationException
+      - java.lang.IllegalArgumentException
+      - org.springframework.security.access.AccessDeniedException
